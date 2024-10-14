@@ -1,11 +1,12 @@
 ---
 layout: page
-title: project 3
-description: a project that redirects to another website
-img: assets/img/7.jpg
-redirect: https://unsplash.com
-importance: 3
-category: work
+title: Quantum Key Exchange 
+description: Symposium Presentation on BB84 Quantum Key Exchange Protocol 
+img: assets/img/bb84.jpg
+redirect: https://docs.google.com/presentation/d/1Xa1g6zumS3vggdBvvY5zfeJ7xoMN2qeL5elulT2BglI/edit?usp=sharing
+importance: 1
+category: for fun
+#related_publications: einstein1956investigations, einstein1950meaning
 ---
 
 Every project has a beautiful feature showcase page.

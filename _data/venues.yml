@@ -4,3 +4,18 @@
 
 "PhysRev":
   url: https://journals.aps.org/
+
+"AAAI":
+  url: https://aaai.org/conference/aaai/
+ 
+"bioRxiv":
+  url: "https://www.biorxiv.org/"
+
+"ICLR":
+  url: "https://iclr.cc/"
+
+"thesis":
+  url: "https://dspace.mit.edu/handle/1721.1/156816?show=full"
+
+"Oxf. Bio":
+  url: "https://academic.oup.com/bioinformatics"

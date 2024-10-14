@@ -116,3 +116,6 @@
             </div>
             {% include scripts/wechatModal.html %}
             {% endif %}
+            {%- if site.strava_id -%}
+            <a href="https://www.strava.com/athletes/{{ site.strava_id }}" title="Strava"><i class="fa-brands fa-strava"></i></a>
+            {% endif %}

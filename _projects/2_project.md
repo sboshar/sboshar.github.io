@@ -1,11 +1,11 @@
 ---
 layout: page
-title: project 2
-description: a project with a background image and giscus comments
-img: assets/img/3.jpg
-importance: 2
-category: work
-giscus_comments: true
+title: Timbre
+description: Website allowing users to explore their spotify by *exploring* a custom 3D generated environment 
+img: assets/img/timbre.jpg
+importance: 1
+category: for fun
+#related_publications: einstein1956investigations, einstein1950meaning
 ---
 
 Every project has a beautiful feature showcase page.

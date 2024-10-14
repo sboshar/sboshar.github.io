@@ -1,10 +1,11 @@
 ---
 layout: page
-title: project 6
-description: a project with no image
-img:
-importance: 4
-category: fun
+title: Human-like List Concept Learning 
+description: An analysis of modeling human learning with bayesian inference on program synthesis via list concept learning. Project as part of 9.66 @ MIT written with Rick Ono.
+img: assets/img/trajectory.jpg
+redirect: https://drive.google.com/file/d/1c7hUZVcSCjkg2bMluJ01exh02A4ol5MG/view?usp=sharing
+importance: 3
+category: school projects and papers
 ---
 
 Every project has a beautiful feature showcase page.

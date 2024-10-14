@@ -1,97 +1,107 @@
-- title: General Information
-  type: map
-  contents:
-    - name: Full Name
-      value: Albert Einstein
-    - name: Date of Birth
-      value: 14th March 1879
-    - name: Languages
-      value: English, German
+# - title: General Information
+#   type: map
+#   contents:
+#     - name: Full Name
+#       value: Sam Boshar 
+#     # - name: Date of Birth
+#     #   value: 14th March 1879
+#     # - name: Languages
+#     #   value: English, German
 
 - title: Education
   type: time_table
   contents:
-    - title: PhD
-      institution: University of Zurich, Zurich, Switzerland
-      year: 1905
+    - title: Masters of Engineering in Computer Science  
+      institution: MIT 
+      year: 2024
       description:
-        - Description 1.
-        - Description 2.
-        - title: Description 3.
-          contents:
-            - Sub-description 1.
-            - Sub-description 2.
-    - title: Federal teaching diploma
-      institution: Eidgenössische Technische Hochschule, Zurich, Switzerland
-      year: 1900
+        - Masters student and co-op at InstaDeep Ltd. researching LLMs for proteomics and genomics.
+    - title: B.S., Double Major in Computer Science and Math, Minor in Brain Cognitive Science 
+      institution: MIT 
+      year: 2023
       description:
-        - Description 1.
-        - Description 2.
+        - GPA 4.9/5.0 
+        - D1 Men’s Varsity Lightweight Crew (Captain) 
+        - Phi Beta Kappa, Xi, 2023
+    - title: Highschool 
+      institution: Phillips Academy Andover 
+      year: 2019
+      description:
+      - Cum Laude Society
 
 - title: Experience
   type: time_table
   contents:
-    - title: Professor of Theoretical Physics
-      institution: Institute for Advanced Study, Princeton University
-      year: 1933 - 1955
+    - title: ML Research Intern                                                                                                                                                                       
+      institution: InstaDeep Ltd (BioNTech) 
+      year: 2023 - 2024
       description:
-        - Description 1.
-        - Description 2.
-        - title: Description 3.
-          contents:
-            - Sub-description 1.
-            - Sub-description 2.
-    - title: Visiting Professor
-      institution: California Institute of Technology, Pasadena, California, US
-      year: 1933
+        - Researching how foundation language models trained on whole genomes (gLMs) understand proteins
+        - Curated and released the first ‘true’ CDS benchmark for various protein tasks
+        - Studied the impact of synonymous codon mutation in CDS on gLM performance
+        - Conducted extensive benchmarking via multi-tpu/node pre-training and fine-tuning.
+        - Work accepted for AAAI and ICLR workshops, in review at Oxford Bioinformatics
+
+    - title: ML Research Intern
+      institution: Dyno Therapeutics, Inc. 
+      year: summer 2022
       description:
-        - Description 1.
-        - Description 2.
+        - Implemented generative methods for viral protein capsid design via large sequence models
+        - Led exploration of LLMs for modeling fitness functions, outperforming previous methods
+        - Implemented supervised contrastive loss, demonstrating superior ranking performance, especially in data scarce domains 
+        - research was incorporated into company pipeline
 
-    - title: Director
-      institution: Kaiser Wilhelm Institute for Physics, Berlin, Germany.
-      year: 1917-1933
-
-    - title: Professor of Theoretical Physics
-      institution: Karl-Ferdinand University, Prague, Czechoslovakia
-      year: 1911 - 1917
+    - title: Undergraduate Researcher 
+      institution: MIT Computer Science and Artificial Intelligence Lab
+      year: 2020 - 2021
       description:
+      - Implemented RL algorithms for novelty robust navigation in minecraft-like world 
+      - Built software for novelty injection and navigation interpretability
+      - Implemented general methods for network dissection, evaluating alignment between hidden units and semantic ideas
+      - Applied techniques to identify/contrast concepts learned by neurons in image classifiers trained on real vs synthetic data.
 
-    - title: Associate Professor of Theoretical Physics
-      institution: University of Zurich, Zurich, Switzerland
-      year: 1909 - 1911
+    - title: Undergraduate Researcher 
+      institution: MIT Synthetic Biology Group - Tim Lu Lab
+      year: 2019 - 2020
+      description:
+        - Studied the impact of antibiotic concentration on E. coli density fluctuation for periodic therapy release
+        - Researched methods for tumor therapy via intravenous injection of programmable bacteria and antibiotic-induced lysis.
 
-- title: Open Source Projects
-  type: time_table
-  contents:
-    - title: <a href="https://github.com/alshedivat/al-folio">al-folio</a>
-      year: 2015-now
-      description: A beautiful, simple, clean, and responsive Jekyll theme for academics.
+
+# - title: Open Source Projects
+#   type: time_table
+#   contents:
+#     - title: <a href="https://github.com/alshedivat/al-folio">al-folio</a>
+#       year: 2015-now
+#       description: A beautiful, simple, clean, and responsive Jekyll theme for academics.
 
 - title: Honors and Awards
   type: time_table
   contents:
-    - year: 1921
+    - year: 2024
+      items:  
+        - MIT Varisty Lightweight Crew Captain (2023-2024)
+    - year: 2023
       items: 
-        - Nobel Prize in Physics 
-        - Matteucci Medal
-    - year: 2029
+        - Most Inspirational Brother Award (ΦΣΚ) 
+        - Phi Beta Kappa, Xi, 2023
+    - year: 2022
       items: 
-        - Max Planck Medal
+        - Most Inspirational Rower Award
 
-- title: Academic Interests
-  type: nested_list
-  contents:
-    - title: Topic 1.
-      items: 
-        - Description 1.
-        - Description 2.
-    - title: Topic 2.
-      items:
-        - Description 1.
-        - Description 2.
+# - title: Academic Interests
+#   type: nested_list
+#   contents:
+#     - title: Topic 1.
+#       items: 
+#         - Description 1.
+#         - Description 2.
+#     - title: Topic 2.
+#       items:
+#         - Description 1.
+#         - Description 2.
 
-- title: Other Interests
+- title: Interests
   type: list
   contents:
-    - <u>Hobbies:</u> Hobby 1, Hobby 2, etc.
+    - Veganism, philosophy, guitar/piano, cycling, rock climbing, reading, health and fitness

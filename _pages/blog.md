@@ -15,10 +15,7 @@ pagination:
     before: 1 # The number of links before the current page
     after: 3  # The number of links after the current page
 ---
-
-<div class="post">
-
-  {% assign blog_name_size = site.blog_name | size %}
+{% assign blog_name_size = site.blog_name | size %}
   {% assign blog_description_size = site.blog_description | size %}
 
   {% if blog_name_size > 0 or blog_description_size > 0 %}
@@ -28,6 +25,51 @@ pagination:
   </div>
   {% endif %}
 
+  <div class="wrap-collabsible">
+    <input id="collapsible" class="toggle" type="checkbox">
+    <label for="collapsible" class="lbl-toggle">All blogs</label>
+    <div class="collapsible-content">
+      <div class="content-inner">
+
+      <div class="container">
+        <div class="row">
+         {% assign unique_sections = site.posts | group_by: "section" %}
+         {% assign sorted_sections = unique_sections | sort: "size" | reverse %}
+
+          <div class="col-6">
+            {% for section in sorted_sections %}
+              {% assign temp = forloop.index0 | divided_by: 2.0 | ceil | modulo: 2 %}
+              {% if temp == 0 %}
+                <h4>{{ section.name | capitalize }}</h4>
+                <ul>
+                  {% for post in section.items %}
+                    <li><a href="{{ post.url | relative_url }}">{{ post.title }}</a></li>
+                  {% endfor %}
+                </ul>
+            {% endif %}
+           {% endfor %}
+          </div>
+          
+          <!-- Second Column -->
+          <div class="col-6">
+            {% for section in sorted_sections %}
+              {% assign temp = forloop.index0 | divided_by: 2.0 | ceil | modulo: 2 %}
+              {% if temp == 1%}
+                <h4>{{ section.name | capitalize }}</h4>
+                <ul>
+                  {% for post in section.items %}
+                    <li><a href="{{ post.url | relative_url }}">{{ post.title }}</a></li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+           {% endfor %}
+          
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   {% if site.display_tags or site.display_categories %}
   <div class="tag-category-list">
     <ul class="p-0 m-0">
@@ -97,6 +139,7 @@ pagination:
     <hr>
   {% endif %}
 
+  <!-- <h1 style="color:#B509AC;">Most Recent</h1> -->
   <ul class="post-list">
 
     {%- if page.pagination.enabled -%}

@@ -2,10 +2,10 @@
 layout: page
 title: projects
 permalink: /projects/
-description: A growing collection of your cool projects.
+description: Here are some personal and school projects! Some wer individual, but others were as part of a group, to whom I accredit.
 nav: true
 nav_order: 3
-display_categories: [work, fun]
+display_categories: [for fun, school projects and papers, other]
 horizontal: false
 ---
 

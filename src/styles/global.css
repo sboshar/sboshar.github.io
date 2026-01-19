@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --global-bg-color: #ffffff;
+  --color-bg: #ffffff;
+  --color-text: #000000;
+  --color-text-muted: #666666;
+  --color-border: #e5e5e5;
+}
+
+.dark {
+  --global-bg-color: #1C1C1D;
+  --color-bg: #1C1C1D;
+  --color-text: #ffffff;
+  --color-text-muted: #999999;
+  --color-border: #333333;
+}
+
+body {
+  background-color: var(--global-bg-color);
+  color: var(--color-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}

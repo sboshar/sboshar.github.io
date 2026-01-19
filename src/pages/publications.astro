@@ -1,0 +1,95 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { papers, workshops, formatAuthors } from '../data/publications';
+---
+
+<BaseLayout title="Publications">
+  <div class="space-y-12">
+    <h1 class="text-4xl font-bold">publications</h1>
+
+    <!-- Papers Section -->
+    <div class="space-y-6">
+      <h2 class="text-2xl font-bold">Papers</h2>
+      <div class="space-y-6">
+        {papers.map((pub) => {
+          const authorInfo = formatAuthors(pub.authors);
+          return (
+            <article class="flex items-start gap-4 pb-6 border-b border-gray-200 dark:border-gray-800 last:border-0">
+              <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1">
+                {pub.abbr}
+              </span>
+              <div class="flex-1 space-y-1">
+                <h3 class="text-lg font-medium">
+                  <a href={pub.link} class="hover:underline">
+                    {pub.title}
+                  </a>
+                </h3>
+                <p class="text-sm">
+                  {authorInfo.text}
+                  {authorInfo.hasMore && (
+                    <a href={pub.link} class="underline hover:no-underline">
+                      {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}
+                    </a>
+                  )}
+                </p>
+                <p class="text-sm italic text-gray-600 dark:text-gray-400">
+                  {pub.isThesis ? `${pub.school}, ${pub.year}` : `${pub.journal}, ${pub.year}`}
+                  {pub.doi && (
+                    <span> • <a href={`https://doi.org/${pub.doi}`} class="hover:underline not-italic">DOI</a></span>
+                  )}
+                </p>
+              </div>
+              {!pub.isThesis && (
+                <div class="text-4xl font-light text-gray-300 dark:text-gray-600">
+                  {pub.year}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </div>
+
+    <!-- Workshops Section -->
+    <div class="space-y-6 pt-8">
+      <h2 class="text-2xl font-bold">Workshops</h2>
+      <div class="space-y-6">
+        {workshops.map((pub) => {
+          const authorInfo = formatAuthors(pub.authors);
+          return (
+            <article class="flex items-start gap-4 pb-6 border-b border-gray-200 dark:border-gray-800 last:border-0">
+              <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1">
+                {pub.abbr}
+              </span>
+              <div class="flex-1 space-y-1">
+                <h3 class="text-lg font-medium">
+                  <a href={pub.link} class="hover:underline">
+                    {pub.title}
+                  </a>
+                </h3>
+                <p class="text-sm">
+                  {authorInfo.text}
+                  {authorInfo.hasMore && (
+                    <a href={pub.link} class="underline hover:no-underline">
+                      {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}
+                    </a>
+                  )}
+                </p>
+                <p class="text-sm italic text-gray-600 dark:text-gray-400">
+                  In {pub.booktitle}, {pub.year}
+                </p>
+              </div>
+              <div class="text-4xl font-light text-gray-300 dark:text-gray-600">
+                {pub.year}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+
+    <footer class="pt-12 text-sm text-gray-600 dark:text-gray-400">
+      © Copyright 2026 Sam Boshar.
+    </footer>
+  </div>
+</BaseLayout>

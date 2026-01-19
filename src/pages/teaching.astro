@@ -1,0 +1,45 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const lectures = [
+  {
+    title: "Finite Kakeya Conjecture",
+    description: "Introductory Lecture on Polnomial Method solution to the Finite Kakeya conjecture as part of 18.204 @ MIT",
+    redirect: "https://drive.google.com/file/d/1QCKVmmhYZoHKx0iuogY6KC1ELKU9wApP/view?usp=sharing",
+    importance: 1
+  },
+  {
+    title: "Spiking Hardware",
+    description: "Should we mimic spiking in hardware? 3hr lecture taught by myself and Grace Song.",
+    redirect: "https://docs.google.com/presentation/d/1QAonRe5iFVq37-iV2sHSKSGwvzh5jB9XSiHMaRJY-L0/edit?usp=sharing",
+    importance: 3
+  }
+];
+---
+
+<BaseLayout title="Teaching">
+  <div class="space-y-12">
+    <div class="space-y-2">
+      <h1 class="text-4xl font-bold">teaching</h1>
+      <p class="text-sm">
+        Lectures and (maybe in the future) courses that I have (co-)taught.
+      </p>
+    </div>
+
+    <div class="space-y-8">
+      {lectures.map((lecture) => (
+        <article class="pb-8 border-b-2 border-black dark:border-white last:border-0">
+          <h2 class="text-xl font-bold lowercase mb-2">
+            <a href={lecture.redirect} target="_blank" rel="noopener noreferrer" class="hover:underline">
+              {lecture.title.toLowerCase()}
+            </a>
+          </h2>
+          <p class="text-sm">
+            {lecture.description}
+          </p>
+        </article>
+      ))}
+    </div>
+
+  </div>
+</BaseLayout>

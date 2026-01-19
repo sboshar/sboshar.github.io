@@ -1,0 +1,46 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Blog">
+  <div class="space-y-12">
+    <div class="space-y-6">
+      <h1 class="text-5xl font-normal flex items-end gap-0">
+        <div class="flex items-stretch">
+          <span class="text-9xl leading-none flex items-center font-thin">[</span>
+          <div class="flex flex-col items-center justify-center px-2 pt-4">
+            <span class="tracking-[0.2em]">Mini</span>
+            <span>Batch</span>
+          </div>
+          <span class="text-9xl leading-none flex items-center font-thin">]</span>
+        </div>
+        <span class="text-8xl font-thin ml-4">P</span>
+        <div class="relative inline-block -ml-2 -mb-8">
+          <img src="/assets/svg/press.svg" alt="press" class="h-40 svg-theme" />
+          <span class="absolute inset-0 flex items-end justify-center text-5xl font-normal pb-8">ress</span>
+        </div>
+      </h1>
+      <p class="text-sm">
+        Blog posts and articles.
+      </p>
+    </div>
+
+    <div class="space-y-8">
+      <p class="text-sm text-gray-600 dark:text-gray-400">
+        Coming soon...
+      </p>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  /* Default: Light mode - make white SVG black (opposite of white background) */
+  .svg-theme {
+    filter: brightness(0);
+  }
+  
+  /* Dark mode - keep SVG white (opposite of dark background) */
+  :global(.dark) .svg-theme {
+    filter: brightness(0) invert(1);
+  }
+</style>

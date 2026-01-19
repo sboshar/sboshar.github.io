@@ -1,0 +1,26 @@
+---
+const navItems = [
+  { href: '/about', label: 'about' },
+  { href: '/publications', label: 'publications' },
+  { href: '/blog', label: 'blog' },
+  { href: '/teaching', label: 'teaching' },
+  { href: '/cv', label: 'cv' },
+];
+
+const currentPath = Astro.url.pathname;
+---
+
+<nav class="fixed top-4 right-4 z-50 flex items-center gap-6">
+  {navItems.map((item) => (
+    <a
+      href={item.href}
+      class={`text-sm hover:underline ${
+        currentPath === item.href || currentPath.startsWith(item.href + '/')
+          ? 'font-semibold' 
+          : ''
+      }`}
+    >
+      {item.label}
+    </a>
+  ))}
+</nav>

@@ -5,4 +5,5 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
   integrations: [tailwind()],
   site: 'https://example.com',
+  output: 'hybrid', // Enable SSR for API endpoints while keeping pages static
 });

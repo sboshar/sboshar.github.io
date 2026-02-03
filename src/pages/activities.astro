@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { fetchStravaActivities } from '../lib/strava';
 
 export const prerender = false; // Enable SSR for this page
 
@@ -38,43 +39,17 @@ if (urlSuccess === 'true') {
 }
 
 try {
-  // Check for access token directly from cookies
-  const accessToken = Astro.cookies.get('strava_access_token')?.value;
-  
-  if (accessToken) {
-    // We have a token, fetch activities directly from Strava API
-    const response = await fetch(
-      'https://www.strava.com/api/v3/athlete/activities?per_page=30',
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
-    
-    if (response.ok) {
-      activities = await response.json();
-    } else if (response.status === 401) {
-      // Token expired or invalid, need to re-authenticate
-      const clientId = import.meta.env.STRAVA_CLIENT_ID;
-      if (clientId) {
-        const redirectUri = `${Astro.url.origin}/api/strava/callback`;
-        const scope = 'activity:read';
-        stravaUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}`;
-      }
-    } else {
-      error = 'Failed to fetch activities from Strava';
-    }
+  const data = await fetchStravaActivities({
+    cookies: Astro.cookies,
+    origin: Astro.url.origin,
+  });
+
+  if (data.authUrl) {
+    stravaUrl = data.authUrl;
+  } else if (data.error) {
+    error = data.error;
   } else {
-    // No token, need to authenticate
-    const clientId = import.meta.env.STRAVA_CLIENT_ID;
-    if (clientId) {
-      const redirectUri = `${Astro.url.origin}/api/strava/callback`;
-      const scope = 'activity:read';
-      stravaUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}`;
-    } else {
-      error = 'Strava API credentials not configured';
-    }
+    activities = data.activities || [];
   }
 } catch (e) {
   console.error('Error fetching activities:', e);
@@ -198,29 +173,34 @@ function getActivityIcon(type: string): string {
 }
 
 // Calculate hours spent per activity type
-function calculateActivityHours(activities: any[]): Array<{type: string, hours: number, count: number}> {
-  const typeMap = new Map<string, number>();
+function calculateActivityHours(activities: any[]): Array<{type: string, hours: number, count: number, distance: number}> {
+  const typeMap = new Map<string, { hours: number, distance: number }>();
   
   activities.forEach(activity => {
     // Try different field names that Strava might use
     const time = activity.moving_time || activity.elapsed_time || activity.time || 0;
     const type = activity.type || activity.sport_type || 'Unknown';
+    const distance = activity.distance || 0;
     
     if (time > 0 && type) {
       const hours = time / 3600; // Convert seconds to hours
-      const current = typeMap.get(type) || 0;
-      typeMap.set(type, current + hours);
+      const current = typeMap.get(type) || { hours: 0, distance: 0 };
+      typeMap.set(type, {
+        hours: current.hours + hours,
+        distance: current.distance + (distance > 0 ? distance : 0),
+      });
     }
   });
   
   return Array.from(typeMap.entries())
-    .map(([type, hours]) => ({
+    .map(([type, data]) => ({
       type,
-      hours: Math.round(hours * 10) / 10, // Round to 1 decimal
+      hours: Math.round(data.hours * 10) / 10, // Round to 1 decimal
       count: activities.filter(a => {
         const aType = a.type || a.sport_type || 'Unknown';
         return aType === type;
-      }).length
+      }).length,
+      distance: Math.round(data.distance),
     }))
     .sort((a, b) => b.hours - a.hours); // Sort by hours descending
 }
@@ -441,7 +421,7 @@ function getContributionColor(level: number): string {
       <div class="space-y-8">
         {/* Donut Chart Section */}
         {chartData.length > 0 ? (
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-8">
+        <div class="border border-transparent p-8" data-activity-chart data-activity-stats={JSON.stringify(chartData)}>
           <h2 class="text-2xl font-semibold mb-6">Time by Activity Type</h2>
           <div class="flex flex-col md:flex-row items-center md:items-start gap-8">
             {/* Chart */}
@@ -455,22 +435,54 @@ function getContributionColor(level: number): string {
                     stroke="var(--global-bg-color)"
                     strokeWidth="2"
                     class="transition-opacity hover:opacity-80 cursor-pointer"
-                    data-type={item.type}
+                    data-activity-type={item.type}
+                    data-activity-index={index}
+                    role="button"
+                    tabindex="0"
+                    aria-label={item.type + " activity details"}
                   />
                 ))}
               </svg>
             </div>
             
-            {/* Legend */}
-            <div class="flex-1 space-y-3">
+            {/* Details + Legend */}
+            <div class="flex-1 space-y-4">
+              <div class="activity-details border border-gray-200 dark:border-gray-800 rounded-lg p-4" data-details-panel>
+                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Selected Activity</div>
+                <div class="text-2xl font-semibold mt-1 text-gray-900 dark:text-gray-100" data-details-type>—</div>
+                <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400">Hours</div>
+                    <div class="font-semibold text-gray-900 dark:text-gray-100" data-details-hours>—</div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400">Activities</div>
+                    <div class="font-semibold text-gray-900 dark:text-gray-100" data-details-count>—</div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400">Total Distance</div>
+                    <div class="font-semibold text-gray-900 dark:text-gray-100" data-details-distance>—</div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400">Avg Distance</div>
+                    <div class="font-semibold text-gray-900 dark:text-gray-100" data-details-avg-distance>—</div>
+                  </div>
+                </div>
+                <div class="mt-3 text-xs text-gray-500 dark:text-gray-400" data-details-share>—</div>
+              </div>
+
               {chartData.map((item) => (
-                <div class="flex items-center justify-between gap-4 p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                <button
+                  type="button"
+                  class="activity-legend-item w-full flex items-center justify-between gap-4 p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+                  data-activity-type={item.type}
+                >
                   <div class="flex items-center gap-3">
                     <div 
                       class="w-4 h-4 rounded-sm"
                       style={{ backgroundColor: item.color }}
                     ></div>
-                    <span class="font-medium text-gray-900 dark:text-gray-100">{item.type}</span>
+                    <span class="activity-legend-label font-medium text-gray-900 dark:text-gray-100">{item.type}</span>
                   </div>
                   <div class="text-right">
                     <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -480,7 +492,7 @@ function getContributionColor(level: number): string {
                       {item.percentage}% • {item.count} {item.count === 1 ? 'activity' : 'activities'}
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
               <div class="pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
                 <div class="flex items-center justify-between">
@@ -494,7 +506,7 @@ function getContributionColor(level: number): string {
           </div>
         </div>
         ) : (
-          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-8">
+          <div class="border border-transparent p-8">
             <h2 class="text-2xl font-semibold mb-6">Time by Activity Type</h2>
             <div class="text-center py-8 text-gray-500 dark:text-gray-400">
               <p class="font-semibold mb-4">No chart data available</p>
@@ -522,7 +534,7 @@ function getContributionColor(level: number): string {
         
         {/* Contribution Graph Section */}
         {contributionData.length > 0 && (
-          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-8">
+          <div class="border border-transparent p-8">
             <h2 class="text-2xl font-semibold mb-6">Activity Heatmap</h2>
             <div class="overflow-x-auto">
               <div class="inline-block">
@@ -661,6 +673,87 @@ function getContributionColor(level: number): string {
   </div>
 </BaseLayout>
 
+<script>
+  const chartContainers = document.querySelectorAll('[data-activity-chart]');
+
+  const formatDistance = (meters) => {
+    const km = meters / 1000;
+    if (!Number.isFinite(km) || meters <= 0) return '—';
+    if (km < 1) return `${Math.round(meters)}m`;
+    return `${km.toFixed(2)}km`;
+  };
+
+  const formatHours = (hours) => {
+    if (!Number.isFinite(hours)) return '—';
+    return `${hours}h`;
+  };
+
+  const formatCount = (count) => {
+    if (!Number.isFinite(count)) return '—';
+    return `${count} ${count === 1 ? 'activity' : 'activities'}`;
+  };
+
+  const setActive = (container, type) => {
+    const statsRaw = container.dataset.activityStats || '[]';
+    let stats = [];
+    try {
+      stats = JSON.parse(statsRaw);
+    } catch {
+      stats = [];
+    }
+
+    const stat = stats.find((item) => item.type === type);
+    if (!stat) return;
+
+    const details = container.querySelector('[data-details-panel]');
+    if (!details) return;
+
+    details.querySelector('[data-details-type]').textContent = stat.type;
+    details.querySelector('[data-details-hours]').textContent = formatHours(stat.hours);
+    details.querySelector('[data-details-count]').textContent = formatCount(stat.count);
+    details.querySelector('[data-details-distance]').textContent = formatDistance(stat.distance || 0);
+    details.querySelector('[data-details-avg-distance]').textContent = stat.count > 0
+      ? formatDistance((stat.distance || 0) / stat.count)
+      : '—';
+    details.querySelector('[data-details-share]').textContent = `${stat.percentage}% of total time`;
+
+    const allItems = container.querySelectorAll('[data-activity-type]');
+    allItems.forEach((el) => {
+      const isActive = el.getAttribute('data-activity-type') === type;
+      el.classList.toggle('is-active', isActive);
+      el.classList.toggle('is-dim', !isActive);
+    });
+  };
+
+  chartContainers.forEach((container) => {
+    const statsRaw = container.dataset.activityStats || '[]';
+    let stats = [];
+    try {
+      stats = JSON.parse(statsRaw);
+    } catch {
+      stats = [];
+    }
+
+    if (stats.length === 0) return;
+    setActive(container, stats[0].type);
+
+    const activate = (type) => setActive(container, type);
+    container.querySelectorAll('path[data-activity-type]').forEach((path) => {
+      path.addEventListener('click', () => activate(path.getAttribute('data-activity-type')));
+      path.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate(path.getAttribute('data-activity-type'));
+        }
+      });
+    });
+
+    container.querySelectorAll('.activity-legend-item').forEach((item) => {
+      item.addEventListener('click', () => activate(item.getAttribute('data-activity-type')));
+    });
+  });
+</script>
+
 <style>
   .donut-chart {
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
@@ -677,5 +770,21 @@ function getContributionColor(level: number): string {
   .donut-chart path:hover {
     opacity: 0.85;
     transform: scale(1.02);
+  }
+
+  .donut-chart path.is-dim {
+    opacity: 0.4;
+  }
+
+  .activity-legend-item.is-active {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .dark .activity-legend-item.is-active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .activity-legend-item.is-dim {
+    opacity: 0.7;
   }
 </style>

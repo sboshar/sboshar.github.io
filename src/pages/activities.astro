@@ -74,6 +74,7 @@ const activitiesForChart = activities.map((activity) => ({
 
 // Calculate contribution graph data (grouped by weeks)
 let contributionData: Array<Array<{ date: Date, count: number, hours: number, level: number }>> = [];
+let contributionActivitiesByDay = new Map<string, Array<{ id: number, name: string, description: string, type: string }>>();
 
 // Calculate chart data if we have activities
 // Do this calculation once and store it
@@ -127,6 +128,7 @@ if (activities && activities.length > 0) {
     
     // Generate contribution graph data
     contributionData = generateContributionGraph(activities);
+    contributionActivitiesByDay = buildActivityDetailsByDay(activities);
     console.log('Contribution graph data:', contributionData.length, 'weeks');
     if (contributionData.length > 0) {
       const totalDays = contributionData.reduce((sum, week) => sum + week.length, 0);
@@ -286,6 +288,29 @@ function calculateActivityByDay(activities: any[]): Map<string, { count: number,
   return dayMap;
 }
 
+function buildActivityDetailsByDay(
+  activities: any[]
+): Map<string, Array<{ id: number, name: string, description: string, type: string }>> {
+  const dayMap = new Map<string, Array<{ id: number, name: string, description: string, type: string }>>();
+  
+  activities.forEach((activity) => {
+    const rawDate = activity.start_date || activity.start_date_local;
+    if (!rawDate) return;
+    const date = new Date(rawDate);
+    const dateKey = date.toISOString().split('T')[0];
+    const list = dayMap.get(dateKey) || [];
+    list.push({
+      id: activity.id,
+      name: activity.name || activity.type || activity.sport_type || 'Activity',
+      description: activity.description || '',
+      type: activity.type || activity.sport_type || 'Activity',
+    });
+    dayMap.set(dateKey, list);
+  });
+  
+  return dayMap;
+}
+
 // Generate GitHub-style contribution graph data
 function generateContributionGraph(activities: any[]): Array<Array<{ date: Date, count: number, hours: number, level: number }>> {
   const dayMap = calculateActivityByDay(activities);
@@ -400,6 +425,8 @@ function formatHeatmapHours(hours: number): string {
                 {week.map((dayData, dayIndex) => {
                   const color = getContributionColor(dayData.level);
                   const dateStr = dayData.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const dateKey = dayData.date.toISOString().split('T')[0];
+                  const dayActivities = contributionActivitiesByDay.get(dateKey) || [];
                   return (
                     <div
                       key={dayIndex}
@@ -408,6 +435,7 @@ function formatHeatmapHours(hours: number): string {
                       data-heatmap-date={dateStr}
                       data-heatmap-hours={dayData.hours}
                       data-heatmap-count={dayData.count}
+                      data-heatmap-activities={encodeURIComponent(JSON.stringify(dayActivities))}
                     ></div>
                   );
                 })}
@@ -440,6 +468,7 @@ function formatHeatmapHours(hours: number): string {
             <span>Activities</span>
             <span data-heatmap-tooltip-count></span>
           </div>
+          <div class="heatmap-tooltip-list" data-heatmap-tooltip-list></div>
         </div>
       </div>
     )}
@@ -1003,10 +1032,53 @@ function formatHeatmapHours(hours: number): string {
       if (!tooltipDate || !tooltipHours || !tooltipCount) return;
       const hours = Number(target.dataset.heatmapHours || 0);
       const count = Number(target.dataset.heatmapCount || 0);
+      let activities = [];
+      try {
+        const raw = target.dataset.heatmapActivities || '[]';
+        activities = JSON.parse(decodeURIComponent(raw));
+      } catch {
+        activities = [];
+      }
 
       tooltipDate.textContent = target.dataset.heatmapDate || '';
       tooltipHours.textContent = formatHeatmapHours(hours);
       tooltipCount.textContent = formatCount(count);
+      const listEl = tooltip.querySelector('[data-heatmap-tooltip-list]');
+      if (listEl) {
+        listEl.innerHTML = '';
+        if (activities.length > 0) {
+          const maxItems = 3;
+          activities.slice(0, maxItems).forEach((activity) => {
+            const item = document.createElement('a');
+            item.href = `https://www.strava.com/activities/${activity.id}`;
+            item.target = '_blank';
+            item.rel = 'noopener noreferrer';
+            item.className = 'heatmap-tooltip-item';
+
+            const title = document.createElement('div');
+            title.className = 'heatmap-tooltip-item-title';
+            title.textContent = activity.name || activity.type || 'Activity';
+
+            item.appendChild(title);
+
+            if (activity.description) {
+              const desc = document.createElement('div');
+              desc.className = 'heatmap-tooltip-item-desc';
+              desc.textContent = activity.description;
+              item.appendChild(desc);
+            }
+
+            listEl.appendChild(item);
+          });
+
+          if (activities.length > maxItems) {
+            const more = document.createElement('div');
+            more.className = 'heatmap-tooltip-more';
+            more.textContent = `+${activities.length - maxItems} more`;
+            listEl.appendChild(more);
+          }
+        }
+      }
 
       tooltip.classList.add('is-visible');
       tooltip.setAttribute('aria-hidden', 'false');
@@ -1169,6 +1241,7 @@ function formatHeatmapHours(hours: number): string {
     background: #ffffff;
     border: 1px solid rgba(0, 0, 0, 0.1);
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+    color: #4b5563;
     opacity: 0;
     transform: translate(0, 0) scale(0.98);
     transition: opacity 0.15s ease, transform 0.15s ease;
@@ -1193,20 +1266,77 @@ function formatHeatmapHours(hours: number): string {
     justify-content: space-between;
     gap: 12px;
     font-size: 12px;
-    color: #4b5563;
+  }
+
+  .heatmap-tooltip-list {
+    margin-top: 10px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .heatmap-tooltip-item {
+    display: block;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.02);
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .heatmap-tooltip-item:hover {
+    border-color: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .heatmap-tooltip-item-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: inherit;
+  }
+
+  .heatmap-tooltip-item-desc {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.3;
+  }
+
+  .heatmap-tooltip-more {
+    font-size: 11px;
+    color: #6b7280;
   }
 
   .dark .heatmap-tooltip {
-    background: #0f172a;
-    border-color: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45);
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+    color: #4b5563;
   }
 
   .dark .heatmap-tooltip-date {
-    color: #f9fafb;
+    color: #111827;
   }
 
   .dark .heatmap-tooltip-row {
-    color: #d1d5db;
+  }
+
+  .dark .heatmap-tooltip-item {
+    border-color: rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  .dark .heatmap-tooltip-item:hover {
+    border-color: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .dark .heatmap-tooltip-item-title {
+    color: inherit;
+  }
+
+  .dark .heatmap-tooltip-item-desc,
+  .dark .heatmap-tooltip-more {
+    color: #6b7280;
   }
 </style>

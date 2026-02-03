@@ -112,6 +112,10 @@ export async function fetchStravaActivities({
     cached = null;
   }
 
+  if (forceRefresh) {
+    cached = null;
+  }
+
   const cacheFresh = cached && Date.now() - cached.lastSync < CACHE_TTL_MS;
   if (cached && cacheFresh && !forceRefresh) {
     return { activities: cached.activities, cached: true, lastSync: cached.lastSync };

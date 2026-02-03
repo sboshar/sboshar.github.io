@@ -42,6 +42,7 @@ try {
   const data = await fetchStravaActivities({
     cookies: Astro.cookies,
     origin: Astro.url.origin,
+    forceRefresh: Astro.url.searchParams.get('refresh') === '1',
   });
 
   if (data.authUrl) {
@@ -73,7 +74,6 @@ const activitiesForChart = activities.map((activity) => ({
 
 // Calculate contribution graph data (grouped by weeks)
 let contributionData: Array<Array<{ date: Date, count: number, hours: number, level: number }>> = [];
-let maxContributionHours = 0;
 
 // Calculate chart data if we have activities
 // Do this calculation once and store it
@@ -127,7 +127,6 @@ if (activities && activities.length > 0) {
     
     // Generate contribution graph data
     contributionData = generateContributionGraph(activities);
-    maxContributionHours = getMaxContributionHours(contributionData);
     console.log('Contribution graph data:', contributionData.length, 'weeks');
     if (contributionData.length > 0) {
       const totalDays = contributionData.reduce((sum, week) => sum + week.length, 0);
@@ -291,11 +290,7 @@ function calculateActivityByDay(activities: any[]): Map<string, { count: number,
 function generateContributionGraph(activities: any[]): Array<Array<{ date: Date, count: number, hours: number, level: number }>> {
   const dayMap = calculateActivityByDay(activities);
   
-  // Get max values for normalization
-  let maxHours = 0;
-  dayMap.forEach(({ hours }) => {
-    if (hours > maxHours) maxHours = hours;
-  });
+  // Use fixed hour buckets for legend/levels
   
   // Generate data for the last 371 days (53 weeks)
   const today = new Date();
@@ -333,14 +328,12 @@ function generateContributionGraph(activities: any[]): Array<Array<{ date: Date,
       const dateKey = date.toISOString().split('T')[0];
       const dayData = dayMap.get(dateKey) || { count: 0, hours: 0 };
       
-      // Calculate intensity level (0-4) based on activity hours
+      // Calculate intensity level (0-3) based on activity hours buckets
       let level = 0;
-      if (dayData.hours > 0 && maxHours > 0) {
-        const ratio = dayData.hours / maxHours;
-        if (ratio >= 0.75) level = 4;
-        else if (ratio >= 0.5) level = 3;
-        else if (ratio >= 0.25) level = 2;
-        else level = 1;
+      if (dayData.hours > 0) {
+        if (dayData.hours > 3) level = 3;
+        else if (dayData.hours >= 2) level = 2;
+        else if (dayData.hours >= 1) level = 1;
       }
       
       weekData.push({
@@ -362,24 +355,11 @@ function getContributionColor(level: number): string {
   // Use darker grays that are visible on both light and dark backgrounds
   const colors = [
     '#E5E5E5', // Level 0 - no activity (very light gray)
-    '#C4C4C4', // Level 1 - light gray
-    '#9E9E9E', // Level 2 - medium-light gray
-    '#757575', // Level 3 - medium gray
-    '#424242', // Level 4 - dark gray (most activity)
+    '#BDBDBD', // Level 1 - light gray
+    '#8D8D8D', // Level 2 - medium gray
+    '#4A4A4A', // Level 3 - dark gray (most activity)
   ];
   return colors[level] || colors[0];
-}
-
-function getMaxContributionHours(
-  weeks: Array<Array<{ hours: number }>>
-): number {
-  let max = 0;
-  weeks.forEach((week) => {
-    week.forEach((day) => {
-      if (day.hours > max) max = day.hours;
-    });
-  });
-  return Math.round(max * 10) / 10;
 }
 
 function formatHeatmapHours(hours: number): string {
@@ -397,6 +377,72 @@ function formatHeatmapHours(hours: number): string {
         My recent activities from Strava
       </p>
     </div>
+
+    {/* Heatmap Banner */}
+    {contributionData.length > 0 && (
+      <div class="heatmap-banner" data-heatmap>
+        <div class="flex gap-1">
+          {/* Day labels */}
+          <div class="flex flex-col gap-1 pr-2 text-xs text-gray-500 dark:text-gray-400">
+            <div class="h-3"></div>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+              if (idx % 2 === 0) {
+                return <div key={day} class="h-3 leading-3">{day}</div>;
+              }
+              return <div key={day} class="h-3"></div>;
+            })}
+          </div>
+          
+          {/* Graph grid */}
+          <div class="flex gap-1">
+            {contributionData.map((week, weekIndex) => (
+              <div key={weekIndex} class="flex flex-col gap-1">
+                {week.map((dayData, dayIndex) => {
+                  const color = getContributionColor(dayData.level);
+                  const dateStr = dayData.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  return (
+                    <div
+                      key={dayIndex}
+                      class="heatmap-cell w-3 h-3 rounded-sm transition-all hover:scale-110 hover:ring-2 hover:ring-gray-400 cursor-pointer border border-gray-300 dark:border-gray-600"
+                      style={{ backgroundColor: color }}
+                      data-heatmap-date={dateStr}
+                      data-heatmap-hours={dayData.hours}
+                      data-heatmap-count={dayData.count}
+                    ></div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        {/* Legend */}
+        <div class="flex items-center justify-end gap-2 mt-4 text-xs text-gray-500 dark:text-gray-400">
+          <span>{formatHeatmapHours(0)}</span>
+          <div class="flex gap-1">
+            {[0, 1, 2, 3].map((level) => (
+              <div
+                key={level}
+                class="w-3 h-3 rounded-sm"
+                style={{ backgroundColor: getContributionColor(level) }}
+              ></div>
+            ))}
+          </div>
+          <span>&gt;3h</span>
+        </div>
+        <div class="heatmap-tooltip" data-heatmap-tooltip aria-hidden="true">
+          <div class="heatmap-tooltip-date" data-heatmap-tooltip-date></div>
+          <div class="heatmap-tooltip-row">
+            <span>Hours</span>
+            <span data-heatmap-tooltip-hours></span>
+          </div>
+          <div class="heatmap-tooltip-row">
+            <span>Activities</span>
+            <span data-heatmap-tooltip-count></span>
+          </div>
+        </div>
+      </div>
+    )}
 
     {successMessage && (
       <div class="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
@@ -521,7 +567,7 @@ function formatHeatmapHours(hours: number): string {
               </div>
 
               <div class="space-y-2" data-chart-legend>
-                {chartData.map((item) => (
+                {chartData.slice(0, 3).map((item) => (
                   <button
                     type="button"
                     class="activity-legend-item w-full flex items-center justify-between gap-4 p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
@@ -558,7 +604,6 @@ function formatHeatmapHours(hours: number): string {
         </div>
         ) : (
           <div class="border border-transparent p-8">
-            <h2 class="text-2xl font-semibold mb-6">Time by Activity Type</h2>
             <div class="text-center py-8 text-gray-500 dark:text-gray-400">
               <p class="font-semibold mb-4">No chart data available</p>
               <div class="text-left space-y-2 text-sm bg-gray-50 dark:bg-gray-800 p-4 rounded">
@@ -578,65 +623,6 @@ function formatHeatmapHours(hours: number): string {
                     </pre>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Contribution Graph Section */}
-        {contributionData.length > 0 && (
-          <div class="border border-transparent p-8">
-            <div class="overflow-x-auto">
-              <div class="inline-block">
-                <div class="flex gap-1">
-                  {/* Day labels */}
-                  <div class="flex flex-col gap-1 pr-2 text-xs text-gray-500 dark:text-gray-400">
-                    <div class="h-3"></div>
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
-                      if (idx % 2 === 0) {
-                        return <div key={day} class="h-3 leading-3">{day}</div>;
-                      }
-                      return <div key={day} class="h-3"></div>;
-                    })}
-                  </div>
-                  
-                  {/* Graph grid */}
-                  <div class="flex gap-1">
-                    {contributionData.map((week, weekIndex) => (
-                      <div key={weekIndex} class="flex flex-col gap-1">
-                        {week.map((dayData, dayIndex) => {
-                          const color = getContributionColor(dayData.level);
-                          const dateStr = dayData.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                          const tooltip = `${dateStr}: ${dayData.count} ${dayData.count === 1 ? 'activity' : 'activities'}${dayData.hours > 0 ? ', ' + dayData.hours + 'h' : ''}`;
-                          
-                          return (
-                            <div
-                              key={dayIndex}
-                              class="w-3 h-3 rounded-sm transition-all hover:scale-110 hover:ring-2 hover:ring-gray-400 cursor-pointer border border-gray-300 dark:border-gray-600"
-                              style={{ backgroundColor: color }}
-                              title={tooltip}
-                            ></div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Legend */}
-                <div class="flex items-center justify-end gap-2 mt-4 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{formatHeatmapHours(0)}</span>
-                  <div class="flex gap-1">
-                    {[0, 1, 2, 3, 4].map((level) => (
-                      <div
-                        key={level}
-                        class="w-3 h-3 rounded-sm"
-                        style={{ backgroundColor: getContributionColor(level) }}
-                      ></div>
-                    ))}
-                  </div>
-                  <span>{formatHeatmapHours(maxContributionHours)}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -746,6 +732,12 @@ function formatHeatmapHours(hours: number): string {
   const formatCount = (count) => {
     if (!Number.isFinite(count)) return '—';
     return `${count} ${count === 1 ? 'activity' : 'activities'}`;
+  };
+
+  const formatHeatmapHours = (hours) => {
+    if (!Number.isFinite(hours)) return '0h';
+    const rounded = Math.round(hours * 10) / 10;
+    return `${rounded}h`;
   };
 
   const generateDonutSegment = (startAngle, endAngle, radius, innerRadius, centerX, centerY) => {
@@ -927,7 +919,9 @@ function formatHeatmapHours(hours: number): string {
         path.setAttribute('tabindex', '0');
         path.setAttribute('aria-label', `${item.type} activity details`);
         svg.appendChild(path);
+      });
 
+      chartData.slice(0, 3).forEach((item) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className =
@@ -995,6 +989,53 @@ function formatHeatmapHours(hours: number): string {
     }
 
     applyRange();
+  });
+
+  const heatmapContainers = document.querySelectorAll('[data-heatmap]');
+  heatmapContainers.forEach((container) => {
+    const tooltip = container.querySelector('[data-heatmap-tooltip]');
+    if (!tooltip) return;
+    const tooltipDate = tooltip.querySelector('[data-heatmap-tooltip-date]');
+    const tooltipHours = tooltip.querySelector('[data-heatmap-tooltip-hours]');
+    const tooltipCount = tooltip.querySelector('[data-heatmap-tooltip-count]');
+
+    const showTooltip = (event, target) => {
+      if (!tooltipDate || !tooltipHours || !tooltipCount) return;
+      const hours = Number(target.dataset.heatmapHours || 0);
+      const count = Number(target.dataset.heatmapCount || 0);
+
+      tooltipDate.textContent = target.dataset.heatmapDate || '';
+      tooltipHours.textContent = formatHeatmapHours(hours);
+      tooltipCount.textContent = formatCount(count);
+
+      tooltip.classList.add('is-visible');
+      tooltip.setAttribute('aria-hidden', 'false');
+
+      const rect = container.getBoundingClientRect();
+      const tooltipWidth = tooltip.offsetWidth;
+      const tooltipHeight = tooltip.offsetHeight;
+      const offset = 12;
+      let left = event.clientX - rect.left + offset;
+      let top = event.clientY - rect.top + offset;
+
+      if (left + tooltipWidth > rect.width) left = rect.width - tooltipWidth - 8;
+      if (top + tooltipHeight > rect.height) top = rect.height - tooltipHeight - 8;
+      if (left < 0) left = 0;
+      if (top < 0) top = 0;
+
+      tooltip.style.transform = `translate(${left}px, ${top}px)`;
+    };
+
+    const hideTooltip = () => {
+      tooltip.classList.remove('is-visible');
+      tooltip.setAttribute('aria-hidden', 'true');
+    };
+
+    container.querySelectorAll('.heatmap-cell').forEach((cell) => {
+      cell.addEventListener('mouseenter', (event) => showTooltip(event, cell));
+      cell.addEventListener('mousemove', (event) => showTooltip(event, cell));
+      cell.addEventListener('mouseleave', hideTooltip);
+    });
   });
 </script>
 
@@ -1112,5 +1153,60 @@ function formatHeatmapHours(hours: number): string {
 
   .range-axis-caption {
     text-align: center;
+  }
+
+  .heatmap-banner {
+    position: relative;
+  }
+
+  .heatmap-tooltip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 10px 12px;
+    min-width: 140px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+    opacity: 0;
+    transform: translate(0, 0) scale(0.98);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .heatmap-tooltip.is-visible {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+
+  .heatmap-tooltip-date {
+    font-weight: 600;
+    color: #111827;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .heatmap-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: #4b5563;
+  }
+
+  .dark .heatmap-tooltip {
+    background: #0f172a;
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .dark .heatmap-tooltip-date {
+    color: #f9fafb;
+  }
+
+  .dark .heatmap-tooltip-row {
+    color: #d1d5db;
   }
 </style>

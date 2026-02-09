@@ -424,13 +424,6 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
 
 <BaseLayout title="Activities">
   <div class="space-y-12">
-    <div class="space-y-4">
-      <h1 class="text-4xl font-bold">Activities</h1>
-      <p class="text-lg text-gray-600 dark:text-gray-400">
-        My recent activities from Strava
-      </p>
-    </div>
-
     {/* Heatmap Banner */}
     {contributionData.length > 0 && (
       <div class="heatmap-banner" data-heatmap style={{ '--heatmap-weeks': contributionData.length, '--heatmap-left-offset': '2.0625rem' }}>
@@ -446,7 +439,6 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
           <div class="flex gap-1">
           {/* Day labels */}
           <div class="heatmap-labels flex flex-col gap-1 pr-2 text-xs text-gray-500 dark:text-gray-400">
-            <div class="h-3"></div>
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
               if (idx % 2 === 0) {
                 return <div key={day} class="h-3 leading-3">{day}</div>;
@@ -531,7 +523,7 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
         </a>
         <details class="text-xs text-gray-600 dark:text-gray-400">
           <summary class="cursor-pointer hover:underline">Debug info</summary>
-          <div class="mt-2 p-2 bg-white dark:bg-gray-900 rounded font-mono text-xs break-all">
+          <div class="mt-2 p-2 bg-[#FAF8F3] dark:bg-gray-900 rounded font-mono text-xs break-all">
             <p><strong>Current origin:</strong> {Astro.url.origin}</p>
             <p><strong>Expected callback:</strong> {Astro.url.origin}/api/strava/callback</p>
             <p><strong>Auth URL:</strong> {stravaUrl}</p>
@@ -610,7 +602,17 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
             {/* Details + Legend */}
             <div class="flex-1 space-y-4">
               <div class="activity-details border border-gray-200 dark:border-gray-800 rounded-lg p-4" data-details-panel>
-                <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Selected Activity</div>
+                <div class="flex items-center justify-between">
+                  <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Selected Activity</div>
+                  <button
+                    type="button"
+                    class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:underline hidden"
+                    data-back-button
+                    aria-label="Show all activities"
+                  >
+                    ← Back
+                  </button>
+                </div>
                 <div class="text-2xl font-semibold mt-1 text-gray-900 dark:text-gray-100" data-details-type>—</div>
                 <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
                   <div>
@@ -680,7 +682,7 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
                 {activities.length > 0 && (
                   <div class="mt-4">
                     <p class="font-semibold mb-2">Sample activity fields:</p>
-                    <pre class="text-xs bg-white dark:bg-gray-900 p-2 rounded overflow-auto">
+                    <pre class="text-xs bg-[#FAF8F3] dark:bg-gray-900 p-2 rounded overflow-auto">
                       {JSON.stringify({
                         type: activities[0].type,
                         sport_type: activities[0].sport_type,
@@ -710,9 +712,9 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
             </a>
           </div>
 
-        <div class="space-y-4">
-          {activities.map((activity) => (
-            <article class="p-6 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+        <div class="space-y-4" data-activities-container>
+          {activities.slice(0, 3).map((activity) => (
+            <article class="p-6 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors" data-activity-item>
               <div class="flex items-start justify-between gap-4">
                 <div class="flex-1">
                   <div class="flex items-center gap-3 mb-2">
@@ -764,6 +766,155 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
             </article>
           ))}
         </div>
+        
+        {activities.length > 3 && (
+          <div class="flex justify-center pt-4" data-load-more-container>
+            <button
+              type="button"
+              class="px-6 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors font-medium"
+              data-load-more-btn
+            >
+              Load more (next 10)
+            </button>
+          </div>
+        )}
+        
+        <div data-activities-data={JSON.stringify(activities)} style="display: none;"></div>
+        <script>
+          (function() {
+            const container = document.querySelector('[data-activities-container]');
+            const loadMoreBtn = document.querySelector('[data-load-more-btn]');
+            const loadMoreContainer = document.querySelector('[data-load-more-container]');
+            const dataElement = document.querySelector('[data-activities-data]');
+            
+            if (!container || !loadMoreBtn || !dataElement) return;
+            
+            let activitiesData = [];
+            try {
+              activitiesData = JSON.parse(dataElement.getAttribute('data-activities-data') || '[]');
+            } catch (e) {
+              console.error('Error parsing activities data:', e);
+              return;
+            }
+            
+            if (activitiesData.length <= 3) {
+              if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+              return;
+            }
+            
+            let displayedCount = 3;
+            
+            const formatDistance = (meters) => {
+              const km = meters / 1000;
+              if (km < 1) return `${Math.round(meters)}m`;
+              return `${km.toFixed(2)}km`;
+            };
+            
+            const formatDuration = (seconds) => {
+              const hours = Math.floor(seconds / 3600);
+              const minutes = Math.floor((seconds % 3600) / 60);
+              if (hours > 0) return `${hours}h ${minutes}m`;
+              return `${minutes}m`;
+            };
+            
+            const formatDate = (dateString) => {
+              const date = new Date(dateString);
+              return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            };
+            
+            const getActivityIcon = (type) => {
+              const icons = {
+                Run: 'fa-running',
+                Ride: 'fa-bicycle',
+                Walk: 'fa-walking',
+                Hike: 'fa-hiking',
+                Swim: 'fa-swimmer',
+                Workout: 'fa-dumbbell',
+              };
+              return icons[type] || 'fa-circle';
+            };
+            
+            const createActivityElement = (activity) => {
+              const article = document.createElement('article');
+              article.className = 'p-6 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors';
+              article.setAttribute('data-activity-item', '');
+              
+              const type = activity.type || activity.sport_type || 'Activity';
+              const icon = getActivityIcon(type);
+              
+              article.innerHTML = `
+                <div class="flex items-start justify-between gap-4">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                      <i class="fas ${icon} text-lg text-gray-600 dark:text-gray-400"></i>
+                      <h3 class="text-xl font-semibold">
+                        <a
+                          href="https://www.strava.com/activities/${activity.id}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="hover:underline"
+                        >
+                          ${activity.name || type + ' Activity'}
+                        </a>
+                      </h3>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-4 mt-3 text-sm text-gray-600 dark:text-gray-400">
+                      <span class="flex items-center gap-1">
+                        <i class="fas fa-calendar"></i>
+                        ${formatDate(activity.start_date || activity.start_date_local)}
+                      </span>
+                      ${activity.distance > 0 ? `
+                        <span class="flex items-center gap-1">
+                          <i class="fas fa-route"></i>
+                          ${formatDistance(activity.distance)}
+                        </span>
+                      ` : ''}
+                      ${activity.moving_time > 0 ? `
+                        <span class="flex items-center gap-1">
+                          <i class="fas fa-clock"></i>
+                          ${formatDuration(activity.moving_time)}
+                        </span>
+                      ` : ''}
+                      ${activity.total_elevation_gain > 0 ? `
+                        <span class="flex items-center gap-1">
+                          <i class="fas fa-mountain"></i>
+                          ${Math.round(activity.total_elevation_gain)}m
+                        </span>
+                      ` : ''}
+                    </div>
+                  </div>
+                  
+                  ${type ? `
+                    <span class="text-xs px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-full">
+                      ${type}
+                    </span>
+                  ` : ''}
+                </div>
+              `;
+              
+              return article;
+            };
+            
+            loadMoreBtn.addEventListener('click', () => {
+              const nextBatch = activitiesData.slice(displayedCount, displayedCount + 10);
+              
+              nextBatch.forEach(activity => {
+                const element = createActivityElement(activity);
+                container.appendChild(element);
+              });
+              
+              displayedCount += nextBatch.length;
+              
+              if (displayedCount >= activitiesData.length) {
+                loadMoreContainer.style.display = 'none';
+              } else {
+                const remaining = activitiesData.length - displayedCount;
+                loadMoreBtn.textContent = `Load more (next ${Math.min(10, remaining)})`;
+              }
+            });
+          })();
+        </script>
         </div>
       </div>
     )}
@@ -887,11 +1038,47 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
   };
 
   const setActive = (container, type, stats) => {
+    const details = container.querySelector('[data-details-panel]');
+    const backButton = container.querySelector('[data-back-button]');
+    if (!details) return;
+
+    const allItems = container.querySelectorAll('[data-activity-type]');
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const activeStrokeColor = isDarkMode ? '#D4D4D4' : '#525252';
+    const defaultStrokeColor = 'var(--global-bg-color)';
+
+    // Handle "all" case
+    if (type === 'all') {
+      // Show all activities (no dimming)
+      allItems.forEach((el) => {
+        el.classList.remove('is-active', 'is-dim');
+        el.setAttribute('stroke', defaultStrokeColor);
+        el.setAttribute('stroke-width', '2');
+      });
+
+      // Calculate totals
+      const totalHours = stats.reduce((sum, item) => sum + (item.hours || 0), 0);
+      const totalCount = stats.reduce((sum, item) => sum + (item.count || 0), 0);
+      const totalDistance = stats.reduce((sum, item) => sum + (item.distance || 0), 0);
+      const avgDistance = totalCount > 0 ? totalDistance / totalCount : 0;
+
+      details.querySelector('[data-details-type]').textContent = 'all';
+      details.querySelector('[data-details-hours]').textContent = formatHours(totalHours);
+      details.querySelector('[data-details-count]').textContent = formatCount(totalCount);
+      details.querySelector('[data-details-distance]').textContent = formatDistance(totalDistance);
+      details.querySelector('[data-details-avg-distance]').textContent = totalCount > 0
+        ? formatDistance(avgDistance)
+        : '—';
+      details.querySelector('[data-details-share]').textContent = '100% of total time';
+
+      // Hide back button
+      if (backButton) backButton.classList.add('hidden');
+      return;
+    }
+
+    // Handle specific activity type
     const stat = stats.find((item) => item.type === type);
     if (!stat) return;
-
-    const details = container.querySelector('[data-details-panel]');
-    if (!details) return;
 
     details.querySelector('[data-details-type]').textContent = stat.type;
     details.querySelector('[data-details-hours]').textContent = formatHours(stat.hours);
@@ -902,11 +1089,22 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
       : '—';
     details.querySelector('[data-details-share]').textContent = `${stat.percentage}% of total time`;
 
-    const allItems = container.querySelectorAll('[data-activity-type]');
+    // Show back button
+    if (backButton) backButton.classList.remove('hidden');
+    
     allItems.forEach((el) => {
       const isActive = el.getAttribute('data-activity-type') === type;
       el.classList.toggle('is-active', isActive);
       el.classList.toggle('is-dim', !isActive);
+      
+      // Update stroke for active state
+      if (isActive) {
+        el.setAttribute('stroke', activeStrokeColor);
+        el.setAttribute('stroke-width', '4');
+      } else {
+        el.setAttribute('stroke', defaultStrokeColor);
+        el.setAttribute('stroke-width', '2');
+      }
     });
   };
 
@@ -965,6 +1163,25 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
       }
     };
 
+    const details = container.querySelector('[data-details-panel]');
+    const backButton = container.querySelector('[data-back-button]');
+    
+    // Set up back button handler once
+    if (backButton) {
+      backButton.addEventListener('click', () => {
+        const statsRaw = container.dataset.activityStats || '[]';
+        let stats = [];
+        try {
+          stats = JSON.parse(statsRaw);
+        } catch {
+          stats = [];
+        }
+        if (stats.length > 0) {
+          setActive(container, 'all', stats);
+        }
+      });
+    }
+
     const renderChart = (filteredActivities) => {
       const { chartData, totalHours } = buildChartData(filteredActivities);
       container.dataset.activityStats = JSON.stringify(chartData);
@@ -1019,13 +1236,34 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
       `;
       legend.appendChild(totalRow);
 
+      // Initialize with "all" selected
       if (chartData.length > 0) {
-        setActive(container, chartData[0].type, chartData);
+        setActive(container, 'all', chartData);
       }
 
       const activate = (type) => setActive(container, type, chartData);
       svg.querySelectorAll('path[data-activity-type]').forEach((path) => {
-        path.addEventListener('click', () => activate(path.getAttribute('data-activity-type')));
+        // Prevent focus on mousedown to avoid the yellow box flash
+        path.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Temporarily remove tabindex to prevent focus
+          const hadTabindex = path.hasAttribute('tabindex');
+          path.removeAttribute('tabindex');
+          // Restore it immediately after to allow keyboard navigation
+          requestAnimationFrame(() => {
+            if (hadTabindex) {
+              path.setAttribute('tabindex', '0');
+            }
+          });
+        }, { passive: false });
+        path.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          activate(path.getAttribute('data-activity-type'));
+          // Ensure no focus
+          path.blur();
+        });
         path.addEventListener('keydown', (event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
@@ -1152,6 +1390,15 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
 <style>
   .donut-chart {
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
+    outline: none !important;
+  }
+  
+  .donut-chart:focus {
+    outline: none !important;
+  }
+  
+  .donut-chart:focus-visible {
+    outline: none !important;
   }
   
   .dark .donut-chart {
@@ -1159,12 +1406,45 @@ function buildWeeklyLinePath(weeklyHours: number[]): string {
   }
   
   .donut-chart path {
-    transition: opacity 0.2s ease, transform 0.2s ease;
+    transition: opacity 0.2s ease, transform 0.2s ease, stroke-width 0.2s ease;
+    outline: none !important;
+    box-shadow: none !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .donut-chart path:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  
+  .donut-chart path:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  
+  .donut-chart path:active {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  
+  .donut-chart path:focus:active {
+    outline: none !important;
+    box-shadow: none !important;
   }
   
   .donut-chart path:hover {
     opacity: 0.85;
     transform: scale(1.02);
+  }
+
+  .donut-chart path.is-active {
+    stroke-width: 4;
+    stroke: #525252;
+    filter: brightness(1.1);
+  }
+
+  .dark .donut-chart path.is-active {
+    stroke: #D4D4D4;
   }
 
   .donut-chart path.is-dim {

@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --global-bg-color: #ffffff;
-  --color-bg: #ffffff;
-  --color-text: #000000;
+  --global-bg-color: #FAF8F3;
+  --color-bg: #FAF8F3;
+  --color-text: #1a1a1a;
   --color-text-muted: #666666;
   --color-border: #e5e5e5;
 }

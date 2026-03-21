@@ -593,7 +593,7 @@ export function initEinsteinHatBg(canvasId: string) {
   function drawLineWaves(v: View, aa: number, bb: number, curMom: PatchMoments, timeMs: number) {
     const dark = isDark();
     ctx.save();
-    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+    ctx.globalCompositeOperation = dark ? 'lighter' : 'multiply';
 
     const kept: LineWave[] = [];
     for (const w of lineWaves) {
@@ -690,7 +690,7 @@ export function initEinsteinHatBg(canvasId: string) {
     if (samples.length < 2) return;
 
     ctx.save();
-    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+    ctx.globalCompositeOperation = dark ? 'lighter' : 'multiply';
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);

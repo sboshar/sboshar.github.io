@@ -4,6 +4,26 @@ import { papers, formatAuthors } from '../data/publications';
 import { siteHref } from '../lib/site-url';
 
 const selectedPublications = papers.filter(pub => pub.selected === true);
+
+/** Absolute homepage URL for SEO / structured data */
+const websiteUrl = Astro.site
+  ? new URL(import.meta.env.BASE_URL, Astro.site).href
+  : '';
+
+const personJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'Person',
+  name: 'Sam Boshar',
+  alternateName: 'sboshar',
+  url: websiteUrl,
+  sameAs: ['https://github.com/sboshar'],
+  jobTitle: 'ML Research Engineer',
+  worksFor: {
+    '@type': 'Organization',
+    name: 'InstaDeep',
+    url: 'https://www.instadeep.com/',
+  },
+});
 ---
 
 <BaseLayout
@@ -11,6 +31,7 @@ const selectedPublications = papers.filter(pub => pub.selected === true);
   description="Sam Boshar: machine learning research engineer (InstaDeep / BioNTech), genomics foundation models, MIT MEng. Publications, CV, teaching."
   einsteinBg
 >
+  <script type="application/ld+json" set:html={personJsonLd} slot="head" />
   <div class="space-y-12">
     <div class="space-y-6">
       <h1 class="text-6xl font-normal">Sam Boshar</h1>

@@ -720,11 +720,24 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.restore();
   }
 
+  const MIN_VIEWPORT_PX = 80;
+
   function resizeCanvas() {
     const root = canvas.parentElement;
-    /** Match the fixed `inset:0` layer — avoids innerWidth/innerHeight fighting layout on mobile scroll. */
-    const w = Math.max(1, Math.round(root?.clientWidth ?? window.innerWidth));
-    const h = Math.max(1, Math.round(root?.clientHeight ?? window.innerHeight));
+    /** Prefer fixed layer size; fall back to layout viewport. */
+    let w = Math.round(root?.clientWidth ?? window.innerWidth);
+    let h = Math.round(root?.clientHeight ?? window.innerHeight);
+
+    /**
+     * Pull-to-refresh / overscroll can briefly report 0×0 or tiny boxes — resizing the canvas clears
+     * the bitmap and causes disappear + flicker. Keep last good dimensions until layout stabilizes.
+     */
+    if (w < MIN_VIEWPORT_PX || h < MIN_VIEWPORT_PX) {
+      if (viewportCssW >= MIN_VIEWPORT_PX && viewportCssH >= MIN_VIEWPORT_PX) return;
+      w = Math.max(MIN_VIEWPORT_PX, window.innerWidth || 320);
+      h = Math.max(MIN_VIEWPORT_PX, window.innerHeight || 480);
+    }
+
     viewportCssW = w;
     viewportCssH = h;
 
@@ -737,13 +750,14 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  let resizeRaf = 0;
+  /** Debounce: visualViewport/resize storms during mobile gestures would realloc the canvas every frame → flicker. */
+  let resizeDebounceId = 0;
   function scheduleResizeCanvas() {
-    if (resizeRaf) return;
-    resizeRaf = requestAnimationFrame(() => {
-      resizeRaf = 0;
+    window.clearTimeout(resizeDebounceId);
+    resizeDebounceId = window.setTimeout(() => {
+      resizeDebounceId = 0;
       resizeCanvas();
-    });
+    }, 120);
   }
 
   function drawFrame(v: View, aa: number, bb: number, curMom: PatchMoments) {
@@ -870,29 +884,15 @@ export function initEinsteinHatBg(canvasId: string) {
   animId = requestAnimationFrame(tick);
   window.addEventListener('resize', scheduleResizeCanvas, { passive: true });
   window.addEventListener('orientationchange', scheduleResizeCanvas, { passive: true });
-
-  const vv = window.visualViewport;
-  if (vv) {
-    /** `resize` only — `scroll` fires every frame while panning and would thrash canvas realloc. */
-    vv.addEventListener('resize', scheduleResizeCanvas, { passive: true });
-  }
-
-  const rootEl = canvas.parentElement;
-  const resizeObserver =
-    rootEl &&
-    typeof ResizeObserver !== 'undefined' &&
-    new ResizeObserver(() => scheduleResizeCanvas());
-  if (resizeObserver && rootEl) resizeObserver.observe(rootEl);
+  /** No visualViewport / ResizeObserver — they spam during pull-to-refresh and clear the canvas each time. */
 
   return () => {
     cancelAnimationFrame(animId);
-    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    window.clearTimeout(resizeDebounceId);
     motionMq.removeEventListener('change', syncInputMode);
     touchMq.removeEventListener('change', syncInputMode);
     window.removeEventListener('resize', scheduleResizeCanvas);
     window.removeEventListener('orientationchange', scheduleResizeCanvas);
-    if (vv) vv.removeEventListener('resize', scheduleResizeCanvas);
-    resizeObserver?.disconnect();
     window.removeEventListener('pointermove', onGlobalPointerMove);
   };
 }

@@ -46,6 +46,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       })();
     </script>
     <title>{title}</title>
+    <slot name="head" />
   </head>
   <body class="min-h-screen font-sans antialiased" style="background-color: var(--global-bg-color); color: var(--color-text);">
     <TofuLogo />

@@ -369,7 +369,7 @@ const EDGE_LINE_WIDTH_DARK = 0.65;
 /** Tiny cursor halo; line waves propagate both ways along tile perimeter when you touch a wire. */
 const CURSOR_GLOW_RADIUS = 6;
 const CURSOR_GLOW_STRENGTH = 0.14;
-const LINE_HIT_PX = 10;
+const LINE_HIT_PX = 15;
 const WAVE_SPEED_PX_PER_SEC = 100;
 const WAVE_TIME_DECAY = 1.0;
 const WAVE_SAMPLE_STEP_PX = 4;
@@ -647,25 +647,41 @@ export function initEinsteinHatBg(canvasId: string) {
         }
         if (samples.length < 2) continue;
 
+        // Gradient from the first to the last sample fades the pulse edges to
+        // transparent, eliminating the hard endpoint caps that looked like particles.
+        const p0 = samples[0]!;
+        const p1 = samples[samples.length - 1]!;
+
         const buildPath = () => {
           ctx.beginPath();
-          ctx.moveTo(samples[0]!.x, samples[0]!.y);
+          ctx.moveTo(p0.x, p0.y);
           for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
+        };
+
+        const mkGrad = (inner: string, outer: string) => {
+          const g = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+          g.addColorStop(0, outer);
+          g.addColorStop(0.2, inner);
+          g.addColorStop(0.8, inner);
+          g.addColorStop(1, outer);
+          return g;
         };
 
         // Wide soft outer glow
         buildPath();
-        ctx.strokeStyle = dark
-          ? `rgba(185,210,255,${a * 0.15})`
-          : `rgba(${TEXT_RGB_LIGHT},${a * 0.22})`;
+        ctx.strokeStyle = mkGrad(
+          dark ? `rgba(185,210,255,${a * 0.15})` : `rgba(${TEXT_RGB_LIGHT},${a * 0.22})`,
+          dark ? `rgba(185,210,255,0)` : `rgba(${TEXT_RGB_LIGHT},0)`,
+        );
         ctx.lineWidth = 3.5;
         ctx.stroke();
 
         // Bright core
         buildPath();
-        ctx.strokeStyle = dark
-          ? `rgba(225,238,255,${a * 0.6})`
-          : `rgba(${TEXT_RGB_LIGHT},${a * 0.72})`;
+        ctx.strokeStyle = mkGrad(
+          dark ? `rgba(225,238,255,${a * 0.6})` : `rgba(${TEXT_RGB_LIGHT},${a * 0.72})`,
+          dark ? `rgba(225,238,255,0)` : `rgba(${TEXT_RGB_LIGHT},0)`,
+        );
         ctx.lineWidth = 1.8;
         ctx.stroke();
       }

@@ -369,6 +369,42 @@ const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.26)';
 const EDGE_LINE_WIDTH_LIGHT = 0.7;
 const EDGE_LINE_WIDTH_DARK = 0.65;
 
+/** Pointer near an edge → light runs the tile outline and fades. */
+const PULSE_SPEED = 1.35;
+const PULSE_BRIGHT_DECAY = 0.38;
+const PULSE_HIT_MAX_PX = 34;
+const PULSE_MAX_COUNT = 20;
+/** Higher = fewer new pulses while the cursor moves. */
+const HOVER_SPAWN_INTERVAL_MS = 220;
+
+type LightPulse = {
+  shapeIdx: number;
+  edgeIdx: number;
+  /** 0..1 along edge edgeIdx → edgeIdx+1 */
+  t: number;
+  /** 1 → 0 over time */
+  bright: number;
+};
+
+function distPointToSeg(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): { dist: number; t: number } {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-14) return { dist: Math.hypot(px - x1, py - y1), t: 0 };
+  let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const qx = x1 + t * dx;
+  const qy = y1 + t * dy;
+  return { dist: Math.hypot(px - qx, py - qy), t };
+}
+
 export function initEinsteinHatBg(canvasId: string) {
   const el = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const ctx0 = el?.getContext('2d');
@@ -398,6 +434,8 @@ export function initEinsteinHatBg(canvasId: string) {
 
   let animId = 0;
   let reducedMotion = false;
+  const pulses: LightPulse[] = [];
+  let lastFrameMs = 0;
 
   function isDark() {
     return document.documentElement.classList.contains('dark');
@@ -412,6 +450,13 @@ export function initEinsteinHatBg(canvasId: string) {
     cw: number;
     ch: number;
   };
+
+  let lastView: View | null = null;
+  let lastAa = aaRef;
+  let lastBb = bbRef;
+  let lastCurMom: PatchMoments = refMoments;
+
+  let lastHoverSpawnMs = 0;
 
   /** `stableSpan` = bbox of stabilized geometry this frame (not fixed ref), so zoom tracks morph extent. */
   function getView(stableSpan: number): View {
@@ -436,6 +481,105 @@ export function initEinsteinHatBg(canvasId: string) {
       x: (x - v.cx) * v.s + v.w / 2,
       y: -(y - v.cy) * v.s + v.h / 2,
     };
+  }
+
+  function findNearestEdge(
+    px: number,
+    py: number,
+    v: View,
+    aa: number,
+    bb: number,
+    curMom: PatchMoments
+  ): { shapeIdx: number; edgeIdx: number; t: number } | null {
+    let bestD = PULSE_HIT_MAX_PX;
+    let best: { shapeIdx: number; edgeIdx: number; t: number } | null = null;
+    for (let si = 0; si < flatShapes.length; si++) {
+      const sh = flatShapes[si]!;
+      const n = sh.pts.length;
+      for (let ei = 0; ei < n; ei++) {
+        const oa = evalSym(sh.pts[ei]!, aa, bb);
+        const ob = evalSym(sh.pts[(ei + 1) % n]!, aa, bb);
+        const sa = stabilizePoint(oa.x, oa.y, curMom, refMoments);
+        const sb = stabilizePoint(ob.x, ob.y, curMom, refMoments);
+        const p0 = toScreen(sa.x, sa.y, v);
+        const p1 = toScreen(sb.x, sb.y, v);
+        const { dist, t } = distPointToSeg(px, py, p0.x, p0.y, p1.x, p1.y);
+        if (dist < bestD) {
+          bestD = dist;
+          best = { shapeIdx: si, edgeIdx: ei, t };
+        }
+      }
+    }
+    return best;
+  }
+
+  function updatePulses(dt: number) {
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const p = pulses[i]!;
+      p.bright *= Math.exp(-PULSE_BRIGHT_DECAY * dt);
+      p.t += PULSE_SPEED * dt;
+      const sh = flatShapes[p.shapeIdx];
+      if (!sh) {
+        pulses.splice(i, 1);
+        continue;
+      }
+      const n = sh.pts.length;
+      while (p.t >= 1) {
+        p.t -= 1;
+        p.edgeIdx = (p.edgeIdx + 1) % n;
+      }
+      if (p.bright < 0.012) pulses.splice(i, 1);
+    }
+  }
+
+  function drawPulses(v: View, aa: number, bb: number, curMom: PatchMoments) {
+    const dark = isDark();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const p of pulses) {
+      const sh = flatShapes[p.shapeIdx];
+      if (!sh) continue;
+      const n = sh.pts.length;
+      const ei = p.edgeIdx;
+      const oa = evalSym(sh.pts[ei]!, aa, bb);
+      const ob = evalSym(sh.pts[(ei + 1) % n]!, aa, bb);
+      const sa = stabilizePoint(oa.x, oa.y, curMom, refMoments);
+      const sb = stabilizePoint(ob.x, ob.y, curMom, refMoments);
+      const p0 = toScreen(sa.x, sa.y, v);
+      const p1 = toScreen(sb.x, sb.y, v);
+      const x = p0.x + p.t * (p1.x - p0.x);
+      const y = p0.y + p.t * (p1.y - p0.y);
+      const tTrail = Math.max(0, p.t - 0.14);
+      const x0 = p0.x + tTrail * (p1.x - p0.x);
+      const y0 = p0.y + tTrail * (p1.y - p0.y);
+      ctx.strokeStyle = dark
+        ? `rgba(210, 225, 255,${0.4 * p.bright})`
+        : `rgba(95, 120, 230,${0.35 * p.bright})`;
+      ctx.lineWidth = 2.4 * p.bright;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+
+      const r = 8 + 24 * Math.sqrt(p.bright);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      if (dark) {
+        g.addColorStop(0, `rgba(240, 248, 255,${0.6 * p.bright})`);
+        g.addColorStop(0.4, `rgba(170, 195, 255,${0.2 * p.bright})`);
+        g.addColorStop(1, 'rgba(170, 195, 255,0)');
+      } else {
+        g.addColorStop(0, `rgba(100, 125, 255,${0.45 * p.bright})`);
+        g.addColorStop(0.4, `rgba(130, 155, 255,${0.18 * p.bright})`);
+        g.addColorStop(1, 'rgba(130, 155, 255,0)');
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * PI);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function resizeCanvas() {
@@ -480,6 +624,9 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function tick(timeMs: number) {
+    const dt = lastFrameMs ? Math.min(0.05, (timeMs - lastFrameMs) / 1000) : 0;
+    lastFrameMs = timeMs;
+
     const wSlider = reducedMotion
       ? HAT_CLASSIC_SHAPE_V
       : 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
@@ -491,9 +638,48 @@ export function initEinsteinHatBg(canvasId: string) {
     const stableSpan = stabilizedPatchSpan(flatShapes, aa, bb, curMom, refMoments);
 
     const v = getView(stableSpan);
+    lastView = v;
+    lastAa = aa;
+    lastBb = bb;
+    lastCurMom = curMom;
+
+    if (!reducedMotion && pulses.length > 0) {
+      updatePulses(dt);
+    }
+
     drawFrame(v, aa, bb, curMom);
+    if (!reducedMotion && pulses.length > 0) {
+      drawPulses(v, aa, bb, curMom);
+    }
 
     animId = requestAnimationFrame(tick);
+  }
+
+  /** Use window-level move so pulses work over main content too (canvas stays behind text). */
+  function onGlobalPointerMove(e: PointerEvent) {
+    if (reducedMotion || !lastView) return;
+    const now = performance.now();
+    if (now - lastHoverSpawnMs < HOVER_SPAWN_INTERVAL_MS) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const xCss = e.clientX - rect.left;
+    const yCss = e.clientY - rect.top;
+    const sx = rect.width > 1 ? lastView.w / rect.width : 1;
+    const sy = rect.height > 1 ? lastView.h / rect.height : 1;
+    const x = xCss * sx;
+    const y = yCss * sy;
+    if (x < 0 || y < 0 || x > lastView.w || y > lastView.h) return;
+
+    const hit = findNearestEdge(x, y, lastView, lastAa, lastBb, lastCurMom);
+    if (!hit || pulses.length >= PULSE_MAX_COUNT) return;
+
+    lastHoverSpawnMs = now;
+    pulses.push({
+      shapeIdx: hit.shapeIdx,
+      edgeIdx: hit.edgeIdx,
+      t: hit.t,
+      bright: 1,
+    });
   }
 
   function onResize() {
@@ -502,11 +688,13 @@ export function initEinsteinHatBg(canvasId: string) {
 
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   layout();
+  window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
   animId = requestAnimationFrame(tick);
   window.addEventListener('resize', onResize);
 
   return () => {
     cancelAnimationFrame(animId);
     window.removeEventListener('resize', onResize);
+    window.removeEventListener('pointermove', onGlobalPointerMove);
   };
 }

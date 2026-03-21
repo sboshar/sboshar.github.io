@@ -1,12 +1,18 @@
 ---
 /**
  * Full-viewport background: wireframe H7/H8 hat continuum (Tile(a,b) morph).
- * See-through canvas; edges only. Kaplan h7h8-style geometry.
+ * Move the pointer near a hat edge (anywhere on the page) to spawn lights that run tile outlines and fade.
  */
 ---
 
-<div class="einstein-hat-bg-root" aria-hidden="true">
-  <canvas id="einstein-hat-canvas" width="300" height="150"></canvas>
+<div class="einstein-hat-bg-root">
+  <canvas
+    id="einstein-hat-canvas"
+    width="300"
+    height="150"
+    aria-hidden="true"
+    tabindex="-1"
+  ></canvas>
 </div>
 
 <script>
@@ -27,6 +33,7 @@
     width: 100%;
     height: 100%;
     display: block;
+    pointer-events: none;
     opacity: 0.35;
     /* One GPU filter pass over the bitmap — replaces heavy canvas shadowBlur per tile. */
     filter: blur(0.45px)

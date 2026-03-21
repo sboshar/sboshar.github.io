@@ -11,17 +11,17 @@ interface Props {
   description?: string;
   /** Wireframe hat tiling behind content (animated canvas). Enable on about/home only. */
   einsteinBg?: boolean;
-  /** File in `public/` used for link previews (Open Graph / Twitter). Default: og-image.png */
+  /** File in `public/` used for link previews (Open Graph / Twitter). Default: og-image.jpg */
   socialImage?: string;
   /** Short label for og:image:alt and accessibility in unfurls */
   socialImageAlt?: string;
 }
 
-const { title, description, einsteinBg = false, socialImage = 'og-image.png', socialImageAlt } = Astro.props;
+const { title, description, einsteinBg = false, socialImage = 'og-image.jpg', socialImageAlt } = Astro.props;
 
 const metaDescription = description || title;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
-/** Default OG art is name-only; alt matches visible text in og-image.png */
+/** Default OG art; alt matches visible text in og-image.jpg */
 const imageAlt = socialImageAlt ?? 'Sam Boshar';
 const ogImageUrl =
   Astro.site != null ? new URL(siteHref(socialImage.replace(/^\//, '')), Astro.site).href : null;

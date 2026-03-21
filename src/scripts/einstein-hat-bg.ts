@@ -409,7 +409,9 @@ export function initEinsteinHatBg(canvasId: string) {
 
   const SUBST_STEPS = 4;
   /** Higher = larger tiles on screen (scale is fixed from classic-hat bbox, not current morph). */
-  const TILE_ZOOM = 8;
+  const TILE_ZOOM = 10;
+  /** Extra zoom on touch-primary viewports so the tiling reads better on small screens. */
+  const TILE_ZOOM_MOBILE_FACTOR = 1.28;
   const SHAPE_CYCLE_MS = 52000;
 
   let root: HatMeta;
@@ -462,13 +464,14 @@ export function initEinsteinHatBg(canvasId: string) {
   let lastBb = bbRef;
   let lastCurMom: PatchMoments = refMoments;
 
-  /** `stableSpan` = bbox of stabilized geometry this frame (not fixed ref), so zoom tracks morph extent. */
+  /** Zoom follows current morph bbox so the pattern doesn’t grow/shrink on screen (fixed maxSpan broke that). */
   function getView(stableSpan: number): View {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const pad = 1.08;
     const baseS = (Math.min(w, h) / stableSpan) * pad * 0.92;
-    const s = baseS * TILE_ZOOM;
+    const zoom = TILE_ZOOM * (touchPrimary ? TILE_ZOOM_MOBILE_FACTOR : 1);
+    const s = baseS * zoom;
     return {
       w,
       h,

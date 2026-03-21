@@ -359,8 +359,8 @@ export function hatOutlineFromShapeParam(w: number): { x: number; y: number }[] 
 
 /* ---------- Canvas: wireframe (glow = CSS filter on canvas — avoids per-path shadowBlur) ---------- */
 
-const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.32)';
-const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.26)';
+const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.16)';
+const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.16)';
 /** Matches `global.css` `:root --color-text` (#1a1a1a) for light-mode pulse strokes. */
 const TEXT_RGB_LIGHT = '26, 26, 26';
 const EDGE_LINE_WIDTH_LIGHT = 0.7;

@@ -427,7 +427,9 @@ export function initEinsteinHatBg(canvasId: string) {
   const refMoments = computePatchMoments(flatShapes, aaRef, bbRef, null);
 
   let animId = 0;
-  let reducedMotion = false;
+  /** Pulses / cursor glow only — ambient tile morph stays on so the background keeps moving on mobile
+   *  even when users have “Reduce Motion” enabled (that setting is common on iOS). */
+  let reducedEffects = false;
   /** Logical canvas coords; updated from window pointermove. */
   let pointerValid = false;
   let pointerX = 0;
@@ -746,9 +748,7 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function tick(timeMs: number) {
-    const wSlider = reducedMotion
-      ? HAT_CLASSIC_SHAPE_V
-      : 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
+    const wSlider = 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
     const wClamped = Math.min(0.99, Math.max(0.01, wSlider));
     const aa = SHAPE_ALPHA * wClamped;
     const bb = SHAPE_ALPHA * (1 - wClamped);
@@ -764,7 +764,7 @@ export function initEinsteinHatBg(canvasId: string) {
 
     drawFrame(v, aa, bb, curMom);
 
-    if (!reducedMotion) {
+    if (!reducedEffects) {
       // Keep emitting waves even when the cursor is stationary
       if (pointerValid) trySpawnWaveAt(pointerX, pointerY, timeMs);
 
@@ -795,7 +795,7 @@ export function initEinsteinHatBg(canvasId: string) {
   /** Window-level move: glow works over main content; links stay clickable (canvas pointer-events none).
    *  Uses getCoalescedEvents() for sub-frame positions so fast sweeps don't skip wires. */
   function onGlobalPointerMove(e: PointerEvent) {
-    if (reducedMotion || !lastView) return;
+    if (reducedEffects || !lastView) return;
 
     const rect = canvas.getBoundingClientRect();
     const sx = rect.width > 1 ? lastView.w / rect.width : 1;
@@ -825,7 +825,13 @@ export function initEinsteinHatBg(canvasId: string) {
     }
   }
 
-  reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const syncReducedEffects = () => {
+    reducedEffects = motionMq.matches;
+  };
+  syncReducedEffects();
+  motionMq.addEventListener('change', syncReducedEffects);
+
   resizeCanvas();
   window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
   animId = requestAnimationFrame(tick);
@@ -833,6 +839,7 @@ export function initEinsteinHatBg(canvasId: string) {
 
   return () => {
     cancelAnimationFrame(animId);
+    motionMq.removeEventListener('change', syncReducedEffects);
     window.removeEventListener('resize', resizeCanvas);
     window.removeEventListener('pointermove', onGlobalPointerMove);
   };

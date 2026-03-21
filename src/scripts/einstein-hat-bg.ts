@@ -1,7 +1,7 @@
 /**
  * About-page background: Kaplan H7/H8 hat continuum.
  *
- * Ported from Craig Kaplan’s h7h8.js (same logic as https://cs.uwaterloo.ca/~csk/hat/h7h8.html ),
+ * Ported from Craig Kaplan's h7h8.js (same logic as https://cs.uwaterloo.ca/~csk/hat/h7h8.html ),
  * associated with Smith–Myers–Kaplan–Goodman-Strauss (2023). Use aligns with the
  * BSD-3-Clause hatviz family (https://github.com/isohedral/hatviz).
  */
@@ -370,13 +370,13 @@ const EDGE_LINE_WIDTH_DARK = 0.65;
 const CURSOR_GLOW_RADIUS = 6;
 const CURSOR_GLOW_STRENGTH = 0.14;
 const LINE_HIT_PX = 10;
-const WAVE_SPEED_PX_PER_SEC = 90;
-const WAVE_TIME_DECAY = 0.72;
+const WAVE_SPEED_PX_PER_SEC = 100;
+const WAVE_TIME_DECAY = 1.0;
 const WAVE_SAMPLE_STEP_PX = 4;
 
 const WAVE_BASE_BRIGHT = 0.68;
 /** Half-width in px of the Gaussian pulse envelope around each moving front. */
-const WAVE_PULSE_HALF_WIDTH_PX = 55;
+const WAVE_PULSE_HALF_WIDTH_PX = 65;
 /** Min ms between successive waves on the same tile (allows continuous emission while sliding). */
 const WAVE_SPAWN_COOLDOWN_MS = 60;
 
@@ -402,7 +402,7 @@ function distPointToSeg(
 export function initEinsteinHatBg(canvasId: string) {
   const el = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const ctx0 = el?.getContext('2d');
-  if (!el || !ctx0) return () => {};
+  if (!el || !ctx0) return () => { };
 
   // Re-bind after null guard so closures capture non-nullable types.
   const canvas = el;
@@ -613,11 +613,12 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.fill();
   }
 
-  /** Bidirectional energy along one tile’s perimeter from the hit; fades in time and along arc length. */
+  /** Bidirectional pulses along one tile's perimeter; each wave is drawn independently
+   *  so its front position (and therefore speed) is directly visible. Overlapping pulses
+   *  brighten additively via the 'lighter' composite op — constructive interference for free. */
   function drawLineWaves(v: View, aa: number, bb: number, curMom: PatchMoments, timeMs: number) {
     const dark = isDark();
     ctx.save();
-    // Dark text-colored pulse on cream bg needs source-over; lighter only works for bright tints.
     ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
 
     const kept: LineWave[] = [];
@@ -631,21 +632,15 @@ export function initEinsteinHatBg(canvasId: string) {
 
       const pts = shapeVerticesScreen(sh, v, aa, bb, curMom);
       const { lens, perim } = perimeterLens(pts);
-      if (perim < 1e-6) {
-        kept.push(w);
-        continue;
-      }
+      if (perim < 1e-6) { kept.push(w); continue; }
 
       const reach = WAVE_SPEED_PX_PER_SEC * ageSec;
-
-      // Two continuous glowing strokes traveling in opposite directions
-      // Fade in over ~0.15s so overlapping pulses at birth don't create a big flash
+      // Fade in over ~0.15 s so overlapping fronts at birth don't create a flash.
       const fadeIn = Math.min(1, ageSec * 6.5);
       const a = WAVE_BASE_BRIGHT * timeFade * fadeIn;
+
       for (const side of [-1, 1] as const) {
         const frontS = w.s0 + side * reach;
-
-        // Sample points along the pulse segment
         const samples: { x: number; y: number }[] = [];
         for (let s = frontS - WAVE_PULSE_HALF_WIDTH_PX; s <= frontS + WAVE_PULSE_HALF_WIDTH_PX; s += WAVE_SAMPLE_STEP_PX) {
           samples.push(pointAtArcLength(pts, lens, perim, s));

@@ -409,7 +409,7 @@ export function initEinsteinHatBg(canvasId: string) {
 
   const SUBST_STEPS = 4;
   /** Higher = larger tiles on screen (scale is fixed from classic-hat bbox, not current morph). */
-  const TILE_ZOOM = 6.8;
+  const TILE_ZOOM = 8;
   const SHAPE_CYCLE_MS = 52000;
 
   let root: HatMeta;

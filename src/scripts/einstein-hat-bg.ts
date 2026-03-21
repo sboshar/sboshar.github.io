@@ -373,7 +373,7 @@ const WAVE_TIME_DECAY = 1.0;
 const WAVE_SAMPLE_STEP_PX = 4;
 
 /** Overall pulse intensity; tweak this alone before changing stroke alphas or canvas opacity. */
-const WAVE_BASE_BRIGHT = 0.45;
+const WAVE_BASE_BRIGHT = 0.50;
 /** Half-width in px of the Gaussian pulse envelope around each moving front. */
 const WAVE_PULSE_HALF_WIDTH_PX = 65;
 /** Min ms between successive waves on the same tile (allows continuous emission while sliding). */

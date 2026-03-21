@@ -427,9 +427,9 @@ export function initEinsteinHatBg(canvasId: string) {
   const refMoments = computePatchMoments(flatShapes, aaRef, bbRef, null);
 
   let animId = 0;
-  /** Pulses / cursor glow only — ambient tile morph stays on so the background keeps moving on mobile
-   *  even when users have “Reduce Motion” enabled (that setting is common on iOS). */
+  /** Pulses / cursor glow off when prefers-reduced-motion or touch-primary (no lighting on phones). */
   let reducedEffects = false;
+  let touchPrimary = false;
   /** Logical canvas coords; updated from window pointermove. */
   let pointerValid = false;
   let pointerX = 0;
@@ -764,7 +764,8 @@ export function initEinsteinHatBg(canvasId: string) {
 
     drawFrame(v, aa, bb, curMom);
 
-    if (!reducedEffects) {
+    const lightingOn = !reducedEffects && !touchPrimary;
+    if (lightingOn) {
       // Keep emitting waves even when the cursor is stationary
       if (pointerValid) trySpawnWaveAt(pointerX, pointerY, timeMs);
 
@@ -795,7 +796,7 @@ export function initEinsteinHatBg(canvasId: string) {
   /** Window-level move: glow works over main content; links stay clickable (canvas pointer-events none).
    *  Uses getCoalescedEvents() for sub-frame positions so fast sweeps don't skip wires. */
   function onGlobalPointerMove(e: PointerEvent) {
-    if (reducedEffects || !lastView) return;
+    if (reducedEffects || touchPrimary || !lastView) return;
 
     const rect = canvas.getBoundingClientRect();
     const sx = rect.width > 1 ? lastView.w / rect.width : 1;
@@ -826,11 +827,19 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   const motionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const syncReducedEffects = () => {
+  const touchMq = window.matchMedia('(hover: none) and (pointer: coarse)');
+  const syncInputMode = () => {
     reducedEffects = motionMq.matches;
+    const nextTouch = touchMq.matches;
+    if (nextTouch && !touchPrimary) {
+      lineWaves.length = 0;
+      shapeLastSpawnMs.clear();
+    }
+    touchPrimary = nextTouch;
   };
-  syncReducedEffects();
-  motionMq.addEventListener('change', syncReducedEffects);
+  syncInputMode();
+  motionMq.addEventListener('change', syncInputMode);
+  touchMq.addEventListener('change', syncInputMode);
 
   resizeCanvas();
   window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
@@ -839,7 +848,8 @@ export function initEinsteinHatBg(canvasId: string) {
 
   return () => {
     cancelAnimationFrame(animId);
-    motionMq.removeEventListener('change', syncReducedEffects);
+    motionMq.removeEventListener('change', syncInputMode);
+    touchMq.removeEventListener('change', syncInputMode);
     window.removeEventListener('resize', resizeCanvas);
     window.removeEventListener('pointermove', onGlobalPointerMove);
   };

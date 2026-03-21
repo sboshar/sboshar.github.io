@@ -361,14 +361,12 @@ export function hatOutlineFromShapeParam(w: number): { x: number; y: number }[] 
 
 const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.32)';
 const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.26)';
-/** Matches `global.css` `:root --color-text` (#1a1a1a) for light-mode pulse/cursor glow. */
+/** Matches `global.css` `:root --color-text` (#1a1a1a) for light-mode pulse strokes. */
 const TEXT_RGB_LIGHT = '26, 26, 26';
 const EDGE_LINE_WIDTH_LIGHT = 0.7;
 const EDGE_LINE_WIDTH_DARK = 0.65;
 
-/** Tiny cursor halo; line waves propagate both ways along tile perimeter when you touch a wire. */
-const CURSOR_GLOW_RADIUS = 6;
-const CURSOR_GLOW_STRENGTH = 0.14;
+/** Line waves propagate both ways along tile perimeter when you touch a wire. */
 const LINE_HIT_PX = 15;
 const WAVE_SPEED_PX_PER_SEC = 100;
 const WAVE_TIME_DECAY = 1.0;
@@ -589,30 +587,6 @@ export function initEinsteinHatBg(canvasId: string) {
     return pts[0]!;
   }
 
-  function drawRadialGlow(
-    x: number,
-    y: number,
-    radius: number,
-    strength: number,
-    dark: boolean
-  ) {
-    if (strength <= 0) return;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    if (dark) {
-      g.addColorStop(0, `rgba(235, 242, 255,${0.44 * strength})`);
-      g.addColorStop(0.35, `rgba(180, 200, 255,${0.17 * strength})`);
-      g.addColorStop(1, 'rgba(160, 190, 255,0)');
-    } else {
-      g.addColorStop(0, `rgba(${TEXT_RGB_LIGHT},${0.42 * strength})`);
-      g.addColorStop(0.35, `rgba(${TEXT_RGB_LIGHT},${0.16 * strength})`);
-      g.addColorStop(1, `rgba(${TEXT_RGB_LIGHT},0)`);
-    }
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, 2 * PI);
-    ctx.fill();
-  }
-
   /** Bidirectional pulses along one tile's perimeter; each wave is drawn independently
    *  so its front position (and therefore speed) is directly visible. Overlapping pulses
    *  brighten additively via the 'lighter' composite op — constructive interference for free. */
@@ -638,6 +612,7 @@ export function initEinsteinHatBg(canvasId: string) {
       // Fade in over ~0.15 s so overlapping fronts at birth don't create a flash.
       const fadeIn = Math.min(1, ageSec * 6.5);
       const a = WAVE_BASE_BRIGHT * timeFade * fadeIn;
+      if (a < 0.05) { kept.push(w); continue; }
 
       for (const side of [-1, 1] as const) {
         const frontS = w.s0 + side * reach;
@@ -732,15 +707,6 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.restore();
   }
 
-  function drawCursorGlowOnly() {
-    if (!pointerValid) return;
-    const dark = isDark();
-    ctx.save();
-    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
-    drawRadialGlow(pointerX, pointerY, CURSOR_GLOW_RADIUS, CURSOR_GLOW_STRENGTH, dark);
-    ctx.restore();
-  }
-
   function resizeCanvas() {
     /** Cap DPR: fewer pixels to fill each frame (big win vs jitter at high DPR). */
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -803,7 +769,6 @@ export function initEinsteinHatBg(canvasId: string) {
 
       drawLineWaves(v, aa, bb, curMom, timeMs);
       drawCursorLineGlow(v, aa, bb, curMom);
-      drawCursorGlowOnly();
     }
 
     animId = requestAnimationFrame(tick);

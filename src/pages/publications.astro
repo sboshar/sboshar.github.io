@@ -25,7 +25,7 @@ import { papers, workshops, formatAuthors } from '../data/publications';
                   </a>
                 </h3>
                 <p class="text-sm">
-                  {authorInfo.text}
+                  <span set:html={authorInfo.html} />
                   {authorInfo.hasMore && (
                     <a href={pub.link} class="underline hover:no-underline">
                       {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}
@@ -39,11 +39,9 @@ import { papers, workshops, formatAuthors } from '../data/publications';
                   )}
                 </p>
               </div>
-              {!pub.isThesis && (
-                <div class="text-4xl font-light text-gray-300 dark:text-gray-600">
-                  {pub.year}
-                </div>
-              )}
+              <div class="text-4xl font-light text-gray-300 dark:text-gray-600 shrink-0 tabular-nums text-right min-w-[3.5rem]">
+                {pub.year}
+              </div>
             </article>
           );
         })}
@@ -68,7 +66,7 @@ import { papers, workshops, formatAuthors } from '../data/publications';
                   </a>
                 </h3>
                 <p class="text-sm">
-                  {authorInfo.text}
+                  <span set:html={authorInfo.html} />
                   {authorInfo.hasMore && (
                     <a href={pub.link} class="underline hover:no-underline">
                       {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}
@@ -79,7 +77,7 @@ import { papers, workshops, formatAuthors } from '../data/publications';
                   In {pub.booktitle}, {pub.year}
                 </p>
               </div>
-              <div class="text-4xl font-light text-gray-300 dark:text-gray-600">
+              <div class="text-4xl font-light text-gray-300 dark:text-gray-600 shrink-0 tabular-nums text-right min-w-[3.5rem]">
                 {pub.year}
               </div>
             </article>

@@ -90,15 +90,41 @@ export const workshops: Publication[] = [
   }
 ];
 
-export function formatAuthors(authors: string[], maxVisible: number = 3): { text: string; hasMore: boolean; moreCount: number } {
+const NAMES_TO_BOLD = new Set(["Sam Boshar", "S. Boshar"]);
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function authorToHtml(name: string): string {
+  const safe = escapeHtml(name);
+  if (NAMES_TO_BOLD.has(name)) {
+    return `<strong class="font-semibold">${safe}</strong>`;
+  }
+  return safe;
+}
+
+/** Comma-separated author list HTML; your name is wrapped in &lt;strong&gt;. */
+export function formatAuthors(
+  authors: string[],
+  maxVisible: number = 3
+): { html: string; hasMore: boolean; moreCount: number } {
   if (authors.length <= maxVisible) {
-    return { text: authors.join(", "), hasMore: false, moreCount: 0 };
+    return {
+      html: authors.map(authorToHtml).join(", "),
+      hasMore: false,
+      moreCount: 0,
+    };
   }
   const visible = authors.slice(0, maxVisible);
   const remaining = authors.length - maxVisible;
-  return { 
-    text: `${visible.join(", ")}, and `, 
-    hasMore: true, 
-    moreCount: remaining 
+  return {
+    html: `${visible.map(authorToHtml).join(", ")}, and `,
+    hasMore: true,
+    moreCount: remaining,
   };
 }

@@ -47,7 +47,7 @@ const selectedPublications = papers.filter(pub => pub.selected === true);
                   </a>
                 </h3>
                 <p class="text-sm">
-                  {authorInfo.text}
+                  <span set:html={authorInfo.html} />
                   {authorInfo.hasMore && (
                     <a href={pub.link} class="underline hover:no-underline">
                       {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}

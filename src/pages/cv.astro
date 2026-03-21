@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { siteHref } from '../lib/site-url';
 ---
 
 <BaseLayout title="CV">
@@ -7,7 +8,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <!-- Header -->
     <div class="flex justify-between items-start mb-6">
       <h1 class="text-3xl font-normal">CV</h1>
-      <a href="/sam_boshar_resume_1-2026.pdf" download class="text-sm hover:underline" aria-label="Download PDF">
+      <a href={siteHref('sam_boshar_resume_1-2026.pdf')} download class="text-sm hover:underline" aria-label="Download PDF">
         Download PDF
       </a>
     </div>

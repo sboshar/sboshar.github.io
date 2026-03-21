@@ -1,9 +1,10 @@
 ---
+import { siteHref } from '../lib/site-url';
 ---
 
-<a href="/" class="fixed top-4 left-4 z-50">
-  <img 
-    src="/assets/svg/tofu.svg" 
+<a href={siteHref()} class="fixed top-4 left-4 z-50">
+  <img
+    src={siteHref('assets/svg/tofu.svg')}
     alt="Tofu Logo" 
     class="w-20 h-20 transition-opacity hover:opacity-70" 
   />

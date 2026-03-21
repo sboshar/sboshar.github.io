@@ -1,20 +1,22 @@
 ---
-const navItems = [
-  { href: '/', label: 'about' },
-  { href: '/publications', label: 'publications' },
-  { href: '/teaching', label: 'teaching' },
-  { href: '/cv', label: 'cv' },
-];
+import { siteHref, normalizePathname } from '../lib/site-url';
 
-const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
+const navItems = ['about', 'publications', 'teaching', 'cv'].map((segment) => ({
+  label: segment === 'about' ? 'about' : segment,
+  href: segment === 'about' ? siteHref() : siteHref(segment),
+}));
+
+const current = normalizePathname(Astro.url.pathname);
+const homePath = normalizePathname(siteHref());
 ---
 
 <nav class="fixed top-4 right-4 z-50 flex items-center gap-6">
   {navItems.map((item) => {
+    const itemPath = normalizePathname(item.href);
     const isActive =
-      item.href === '/'
-        ? currentPath === '/'
-        : currentPath === item.href || currentPath.startsWith(`${item.href}/`);
+      itemPath === homePath
+        ? current === homePath
+        : current === itemPath || current.startsWith(`${itemPath}/`);
     return (
     <a
       href={item.href}

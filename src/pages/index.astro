@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { papers, formatAuthors } from '../data/publications';
+import { siteHref } from '../lib/site-url';
 
 const selectedPublications = papers.filter(pub => pub.selected === true);
 ---
@@ -66,7 +67,7 @@ const selectedPublications = papers.filter(pub => pub.selected === true);
         })}
       </ul>
       <p class="pt-4">
-        <a href="/publications" class="text-gray-600 dark:text-gray-400 hover:underline">
+        <a href={siteHref('publications')} class="text-gray-600 dark:text-gray-400 hover:underline">
           See all publications →
         </a>
       </p>

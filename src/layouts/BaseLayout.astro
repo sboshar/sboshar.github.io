@@ -2,13 +2,16 @@
 import TofuLogo from '../components/TofuLogo.astro';
 import ThemeToggle from '../components/ThemeToggle.astro';
 import Navigation from '../components/Navigation.astro';
+import AboutEinsteinBg from '../components/AboutEinsteinBg.astro';
 
 interface Props {
   title: string;
   description?: string;
+  /** Wireframe hat tiling behind content (animated canvas). Extra JS/GPU cost on that page. */
+  einsteinBg?: boolean;
 }
 
-const { title, description } = Astro.props;
+const { title, description, einsteinBg = false } = Astro.props;
 ---
 
 <!doctype html>
@@ -36,7 +39,8 @@ const { title, description } = Astro.props;
     <TofuLogo />
     <Navigation />
     <ThemeToggle />
-    <main class="max-w-4xl mx-auto px-6 py-24">
+    {einsteinBg && <AboutEinsteinBg />}
+    <main class:list={['max-w-4xl mx-auto px-6 py-24', { 'relative z-10': einsteinBg }]}>
       <slot />
     </main>
   </body>

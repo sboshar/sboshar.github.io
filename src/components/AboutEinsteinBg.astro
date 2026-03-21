@@ -1,8 +1,7 @@
 ---
 /**
- * Full-viewport background: H7/H8 hat continuum (Tile(a,b) morph).
- * Geometry matches Kaplan’s h7h8.js / https://cs.uwaterloo.ca/~csk/hat/h7h8.html
- * (Tile(a,b) with a = αv, b = α(1−v), α = 1+√3). BSD-3-Clause hat family.
+ * Full-viewport background: wireframe H7/H8 hat continuum (Tile(a,b) morph).
+ * See-through canvas; edges only. Kaplan h7h8-style geometry.
  */
 ---
 
@@ -28,10 +27,25 @@
     width: 100%;
     height: 100%;
     display: block;
-    opacity: 0.42;
+    opacity: 0.35;
+    /* One GPU filter pass over the bitmap — replaces heavy canvas shadowBlur per tile. */
+    filter: blur(0.45px)
+      drop-shadow(0 0 10px rgba(130, 150, 255, 0.42))
+      drop-shadow(0 0 24px rgba(130, 150, 255, 0.22));
+    transform: translateZ(0);
   }
 
   :global(.dark) .einstein-hat-bg-root canvas {
-    opacity: 0.38;
+    opacity: 0.32;
+    filter: blur(0.4px)
+      drop-shadow(0 0 10px rgba(200, 215, 255, 0.38))
+      drop-shadow(0 0 22px rgba(200, 215, 255, 0.18));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .einstein-hat-bg-root canvas,
+    :global(.dark) .einstein-hat-bg-root canvas {
+      filter: none;
+    }
   }
 </style>

@@ -19,12 +19,12 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
 
   if (error) {
     console.error('Strava returned error:', error);
-    return redirect('/activities?error=access_denied', 302);
+    return redirect('/?strava_error=access_denied', 302);
   }
 
   if (!code) {
     console.error('No code parameter in callback URL');
-    return redirect('/activities?error=no_code', 302);
+    return redirect('/?strava_error=no_code', 302);
   }
 
   const clientId = import.meta.env.STRAVA_CLIENT_ID;
@@ -32,7 +32,7 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   const redirectUri = `${url.origin}/api/strava/callback`;
 
   if (!clientId || !clientSecret) {
-    return redirect('/activities?error=config_error', 302);
+    return redirect('/?strava_error=config', 302);
   }
 
   try {
@@ -64,7 +64,7 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
         redirectUri,
         code: code.substring(0, 10) + '...',
       });
-      return redirect(`/activities?error=token_exchange_failed&details=${encodeURIComponent(errorData.message || tokenResponse.statusText)}`, 302);
+      return redirect(`/?strava_error=token&details=${encodeURIComponent(errorData.message || tokenResponse.statusText)}`, 302);
     }
 
     const tokenData = await tokenResponse.json();
@@ -94,9 +94,9 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
       path: '/',
     });
 
-    return redirect('/activities?success=true', 302);
+    return redirect('/?strava_success=1', 302);
   } catch (error: any) {
     console.error('Strava callback error:', error);
-    return redirect(`/activities?error=server_error&details=${encodeURIComponent(error.message || 'Unknown error')}`, 302);
+    return redirect(`/?strava_error=server&details=${encodeURIComponent(error.message || 'Unknown error')}`, 302);
   }
 };

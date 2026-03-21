@@ -1,5 +1,5 @@
 /**
- * About-page background: Kaplan H7/H8 hat continuum + edge “rain”.
+ * About-page background: Kaplan H7/H8 hat continuum.
  *
  * Ported from Craig Kaplan’s h7h8.js (same logic as https://cs.uwaterloo.ca/~csk/hat/h7h8.html ),
  * associated with Smith–Myers–Kaplan–Goodman-Strauss (2023). Use aligns with the
@@ -362,23 +362,12 @@ export function hatOutlineFromShapeParam(w: number): { x: number; y: number }[] 
   return H8.pts.map((p) => evalSym(p, aa, bb));
 }
 
-/* ---------- Canvas drawing ---------- */
+/* ---------- Canvas: wireframe (glow = CSS filter on canvas — avoids per-path shadowBlur) ---------- */
 
-/** Four gray fills for light background (neutral, semi-transparent). */
-const GRAYS_LIGHT = [
-  'rgba(236, 236, 236, 0.52)',
-  'rgba(210, 210, 210, 0.5)',
-  'rgba(186, 186, 186, 0.48)',
-  'rgba(162, 162, 162, 0.46)',
-] as const;
-
-/** Four gray fills for dark mode. */
-const GRAYS_DARK = [
-  'rgba(58, 58, 58, 0.5)',
-  'rgba(72, 72, 72, 0.48)',
-  'rgba(88, 88, 88, 0.46)',
-  'rgba(104, 104, 104, 0.44)',
-] as const;
+const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.32)';
+const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.26)';
+const EDGE_LINE_WIDTH_LIGHT = 0.7;
+const EDGE_LINE_WIDTH_DARK = 0.65;
 
 export function initEinsteinHatBg(canvasId: string) {
   const el = document.getElementById(canvasId) as HTMLCanvasElement | null;
@@ -402,8 +391,6 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   const flatShapes = flattenShapes(root);
-  /** Stable 0..3 gray band per tile (does not depend on morph). */
-  const tileGrayIx = flatShapes.map((_, i) => i % 4);
 
   const aaRef = SHAPE_ALPHA * HAT_CLASSIC_SHAPE_V;
   const bbRef = SHAPE_ALPHA * (1 - HAT_CLASSIC_SHAPE_V);
@@ -452,7 +439,8 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function resizeCanvas() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    /** Cap DPR: fewer pixels to fill each frame (big win vs jitter at high DPR). */
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const w = window.innerWidth;
     const h = window.innerHeight;
     canvas.width = Math.floor(w * dpr);
@@ -468,14 +456,16 @@ export function initEinsteinHatBg(canvasId: string) {
 
   function drawFrame(v: View, aa: number, bb: number, curMom: PatchMoments) {
     const dark = isDark();
-    const grays = dark ? GRAYS_DARK : GRAYS_LIGHT;
-    const stroke = dark ? 'rgba(200, 200, 200, 0.14)' : 'rgba(48, 48, 48, 0.15)';
-    const lw = dark ? 0.35 : 0.45;
+    const stroke = dark ? EDGE_STROKE_DARK : EDGE_STROKE_LIGHT;
+    const lw = dark ? EDGE_LINE_WIDTH_DARK : EDGE_LINE_WIDTH_LIGHT;
 
     ctx.clearRect(0, 0, v.w, v.h);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
 
-    for (let ti = 0; ti < flatShapes.length; ti++) {
-      const sh = flatShapes[ti];
+    for (const sh of flatShapes) {
       ctx.beginPath();
       for (let i = 0; i < sh.pts.length; i++) {
         const o = evalSym(sh.pts[i], aa, bb);
@@ -485,10 +475,6 @@ export function initEinsteinHatBg(canvasId: string) {
         else ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
-      ctx.fillStyle = grays[tileGrayIx[ti] ?? 0];
-      ctx.fill();
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = lw;
       ctx.stroke();
     }
   }

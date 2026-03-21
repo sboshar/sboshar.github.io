@@ -1,15 +1,13 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import AboutEinsteinBg from '../components/AboutEinsteinBg.astro';
 import { papers, formatAuthors } from '../data/publications';
 
 // Get selected publications
 const selectedPublications = papers.filter(pub => pub.selected === true);
 ---
 
-<BaseLayout title="About">
-  <AboutEinsteinBg />
-  <div class="relative z-10 space-y-12">
+<BaseLayout title="About" einsteinBg>
+  <div class="space-y-12">
     <div class="space-y-6">
       <h1 class="text-6xl font-normal">Sam Boshar</h1>
       <p class="text-lg">
@@ -98,3 +96,4 @@ const selectedPublications = papers.filter(pub => pub.selected === true);
 
   </div>
 </BaseLayout>
+

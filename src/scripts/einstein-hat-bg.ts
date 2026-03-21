@@ -370,16 +370,18 @@ const EDGE_LINE_WIDTH_LIGHT = 0.7;
 const EDGE_LINE_WIDTH_DARK = 0.65;
 
 /** Tiny cursor halo; line waves propagate both ways along tile perimeter when you touch a wire. */
-const CURSOR_GLOW_RADIUS = 8;
-const CURSOR_GLOW_STRENGTH = 0.32;
-const LINE_HIT_PX = 36;
-const WAVE_SPEED_PX_PER_SEC = 465;
-const WAVE_SPACE_DECAY = 0.016;
-const WAVE_TIME_DECAY = 0.35;
-const WAVE_SAMPLE_STEP_PX = 5;
-const WAVE_DOT_RADIUS = 5.2;
-const WAVE_CENTER_EXTRA_R = 2.5;
-const WAVE_BASE_BRIGHT = 1.32;
+const CURSOR_GLOW_RADIUS = 6;
+const CURSOR_GLOW_STRENGTH = 0.2;
+const LINE_HIT_PX = 42;
+const WAVE_SPEED_PX_PER_SEC = 295;
+const WAVE_SPACE_DECAY = 0.03;
+const WAVE_TIME_DECAY = 0.36;
+const WAVE_SAMPLE_STEP_PX = 4;
+const WAVE_DOT_RADIUS = 4.1;
+const WAVE_CENTER_EXTRA_R = 1.75;
+const WAVE_BASE_BRIGHT = 0.9;
+/** Min ms between successive waves on the same tile (allows continuous emission while sliding). */
+const WAVE_SPAWN_COOLDOWN_MS = 60;
 
 function distPointToSeg(
   px: number,
@@ -433,7 +435,6 @@ export function initEinsteinHatBg(canvasId: string) {
   let pointerValid = false;
   let pointerX = 0;
   let pointerY = 0;
-  let prevLineContact = false;
 
   type LineWave = {
     shapeIdx: number;
@@ -442,6 +443,8 @@ export function initEinsteinHatBg(canvasId: string) {
     birthMs: number;
   };
   const lineWaves: LineWave[] = [];
+  /** Per-tile last-spawn timestamp for the cooldown. */
+  const shapeLastSpawnMs = new Map<number, number>();
 
   function isDark() {
     return document.documentElement.classList.contains('dark');
@@ -645,7 +648,7 @@ export function initEinsteinHatBg(canvasId: string) {
         pHit.x,
         pHit.y,
         WAVE_DOT_RADIUS + WAVE_CENTER_EXTRA_R,
-        centerA * 1.22,
+        centerA * 1.1,
         dark
       );
 
@@ -737,54 +740,61 @@ export function initEinsteinHatBg(canvasId: string) {
     drawFrame(v, aa, bb, curMom);
 
     if (!reducedMotion) {
-      if (pointerValid) {
-        const hit = nearestEdgeHit(pointerX, pointerY, v, aa, bb, curMom);
-        const inContact = hit !== null && hit.dist < LINE_HIT_PX;
-        if (inContact && !prevLineContact) {
-          const sh = flatShapes[hit.shapeIdx];
-          if (sh) {
-            const pts = shapeVerticesScreen(sh, v, aa, bb, curMom);
-            const { lens, perim } = perimeterLens(pts);
-            if (perim > 1e-6) {
-              const s0 = arcLengthAtEdge(lens, hit.edgeIdx, hit.t);
-              lineWaves.push({ shapeIdx: hit.shapeIdx, s0, birthMs: timeMs });
-            }
-          }
-        }
-        prevLineContact = inContact;
-      } else {
-        prevLineContact = false;
-      }
-
       drawLineWaves(v, aa, bb, curMom, timeMs);
       drawCursorGlowOnly();
-    } else {
-      prevLineContact = false;
     }
 
     animId = requestAnimationFrame(tick);
   }
 
-  /** Window-level move: glow works over main content; links stay clickable (canvas pointer-events none). */
+  /** Spawn a wave at (x, y) in logical canvas coords if a wire is close enough and cooldown elapsed. */
+  function trySpawnWaveAt(x: number, y: number, timeMs: number) {
+    if (!lastView) return;
+    const hit = nearestEdgeHit(x, y, lastView, lastAa, lastBb, lastCurMom);
+    if (!hit || hit.dist >= LINE_HIT_PX) return;
+    const lastSpawn = shapeLastSpawnMs.get(hit.shapeIdx) ?? 0;
+    if (timeMs - lastSpawn < WAVE_SPAWN_COOLDOWN_MS) return;
+    const sh = flatShapes[hit.shapeIdx];
+    if (!sh) return;
+    const pts = shapeVerticesScreen(sh, lastView, lastAa, lastBb, lastCurMom);
+    const { lens, perim } = perimeterLens(pts);
+    if (perim < 1e-6) return;
+    const s0 = arcLengthAtEdge(lens, hit.edgeIdx, hit.t);
+    lineWaves.push({ shapeIdx: hit.shapeIdx, s0, birthMs: timeMs });
+    shapeLastSpawnMs.set(hit.shapeIdx, timeMs);
+  }
+
+  /** Window-level move: glow works over main content; links stay clickable (canvas pointer-events none).
+   *  Uses getCoalescedEvents() for sub-frame positions so fast sweeps don't skip wires. */
   function onGlobalPointerMove(e: PointerEvent) {
     if (reducedMotion || !lastView) return;
 
     const rect = canvas.getBoundingClientRect();
-    const xCss = e.clientX - rect.left;
-    const yCss = e.clientY - rect.top;
     const sx = rect.width > 1 ? lastView.w / rect.width : 1;
     const sy = rect.height > 1 ? lastView.h / rect.height : 1;
-    const x = xCss * sx;
-    const y = yCss * sy;
+    const timeMs = performance.now();
 
-    if (x < 0 || y < 0 || x > lastView.w || y > lastView.h) {
-      pointerValid = false;
-      return;
+    // getCoalescedEvents gives the full sub-frame path the pointer actually traveled
+    const events: PointerEvent[] = (e as any).getCoalescedEvents?.() ?? [e];
+    let lastValid = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    for (const ce of events) {
+      const x = (ce.clientX - rect.left) * sx;
+      const y = (ce.clientY - rect.top) * sy;
+      if (x < 0 || y < 0 || x > lastView.w || y > lastView.h) continue;
+      lastValid = true;
+      lastX = x;
+      lastY = y;
+      trySpawnWaveAt(x, y, timeMs);
     }
 
-    pointerValid = true;
-    pointerX = x;
-    pointerY = y;
+    pointerValid = lastValid;
+    if (lastValid) {
+      pointerX = lastX;
+      pointerY = lastY;
+    }
   }
 
   function onResize() {

@@ -3,6 +3,7 @@ import TofuLogo from '../components/TofuLogo.astro';
 import ThemeToggle from '../components/ThemeToggle.astro';
 import Navigation from '../components/Navigation.astro';
 import AboutEinsteinBg from '../components/AboutEinsteinBg.astro';
+import EinsteinBgInfo from '../components/EinsteinBgInfo.astro';
 import { siteHref } from '../lib/site-url';
 
 interface Props {
@@ -53,6 +54,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
     <Navigation />
     <ThemeToggle />
     {einsteinBg && <AboutEinsteinBg />}
+    {einsteinBg && <EinsteinBgInfo />}
     <main class:list={['max-w-4xl mx-auto px-6 py-24', { 'relative z-10': einsteinBg }]}>
       <slot />
     </main>

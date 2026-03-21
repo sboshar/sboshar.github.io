@@ -1,0 +1,69 @@
+---
+/**
+ * Subtle disclosure for the homepage Einstein hat wireframe background.
+ * Rendered only when BaseLayout has einsteinBg enabled.
+ */
+---
+
+<details class="einstein-bg-info fixed bottom-5 left-5 z-50 max-w-[min(18rem,calc(100vw-2.5rem))]">
+  <summary class="einstein-bg-info-summary">
+    The hat field
+  </summary>
+  <div class="einstein-bg-info-panel mt-2 space-y-2 border-t border-divider pt-2">
+    <p>
+      The backdrop is a wireframe view of the <strong>H7/H8 hat continuum</strong>—a family of
+      aperiodic monotiles (the “Einstein hat” story) that morph between two shapes while still
+      tiling the plane. The implementation follows Craig Kaplan’s continuum demo.
+    </p>
+    <p class="flex flex-wrap gap-x-3 gap-y-1">
+      <a
+        href="https://cs.uwaterloo.ca/~csk/hat/h7h8.html"
+        class="underline decoration-from-font underline-offset-2 hover:opacity-80"
+        >Kaplan’s H7/H8 explorer</a
+      >
+      <a
+        href="https://arxiv.org/abs/2303.10798"
+        class="underline decoration-from-font underline-offset-2 hover:opacity-80"
+        >Smith et al. (2023)</a
+      >
+    </p>
+  </div>
+</details>
+
+<style>
+  .einstein-bg-info-summary {
+    list-style: none;
+    cursor: pointer;
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    opacity: 0.55;
+    transition: opacity 0.2s ease;
+  }
+
+  .einstein-bg-info-summary:hover,
+  details.einstein-bg-info:focus-within > .einstein-bg-info-summary,
+  details.einstein-bg-info[open] > .einstein-bg-info-summary {
+    opacity: 1;
+  }
+
+  .einstein-bg-info-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .einstein-bg-info-panel {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+  }
+
+  .einstein-bg-info-panel strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  .einstein-bg-info-panel a {
+    color: var(--color-text-muted);
+  }
+</style>

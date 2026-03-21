@@ -369,22 +369,17 @@ const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.26)';
 const EDGE_LINE_WIDTH_LIGHT = 0.7;
 const EDGE_LINE_WIDTH_DARK = 0.65;
 
-/** Pointer near an edge → light runs the tile outline and fades. */
-const PULSE_SPEED = 1.35;
-const PULSE_BRIGHT_DECAY = 0.38;
-const PULSE_HIT_MAX_PX = 34;
-const PULSE_MAX_COUNT = 20;
-/** Higher = fewer new pulses while the cursor moves. */
-const HOVER_SPAWN_INTERVAL_MS = 220;
-
-type LightPulse = {
-  shapeIdx: number;
-  edgeIdx: number;
-  /** 0..1 along edge edgeIdx → edgeIdx+1 */
-  t: number;
-  /** 1 → 0 over time */
-  bright: number;
-};
+/** Tiny cursor halo; line waves propagate both ways along tile perimeter when you touch a wire. */
+const CURSOR_GLOW_RADIUS = 8;
+const CURSOR_GLOW_STRENGTH = 0.32;
+const LINE_HIT_PX = 36;
+const WAVE_SPEED_PX_PER_SEC = 465;
+const WAVE_SPACE_DECAY = 0.016;
+const WAVE_TIME_DECAY = 0.35;
+const WAVE_SAMPLE_STEP_PX = 5;
+const WAVE_DOT_RADIUS = 5.2;
+const WAVE_CENTER_EXTRA_R = 2.5;
+const WAVE_BASE_BRIGHT = 1.32;
 
 function distPointToSeg(
   px: number,
@@ -434,8 +429,19 @@ export function initEinsteinHatBg(canvasId: string) {
 
   let animId = 0;
   let reducedMotion = false;
-  const pulses: LightPulse[] = [];
-  let lastFrameMs = 0;
+  /** Logical canvas coords; updated from window pointermove. */
+  let pointerValid = false;
+  let pointerX = 0;
+  let pointerY = 0;
+  let prevLineContact = false;
+
+  type LineWave = {
+    shapeIdx: number;
+    /** Arc length from vertex 0 along closed perimeter (screen px). */
+    s0: number;
+    birthMs: number;
+  };
+  const lineWaves: LineWave[] = [];
 
   function isDark() {
     return document.documentElement.classList.contains('dark');
@@ -455,8 +461,6 @@ export function initEinsteinHatBg(canvasId: string) {
   let lastAa = aaRef;
   let lastBb = bbRef;
   let lastCurMom: PatchMoments = refMoments;
-
-  let lastHoverSpawnMs = 0;
 
   /** `stableSpan` = bbox of stabilized geometry this frame (not fixed ref), so zoom tracks morph extent. */
   function getView(stableSpan: number): View {
@@ -483,16 +487,28 @@ export function initEinsteinHatBg(canvasId: string) {
     };
   }
 
-  function findNearestEdge(
+  /** Closest wire hit: foot on segment, distance, tile + edge index + parameter t ∈ [0,1]. */
+  function nearestEdgeHit(
     px: number,
     py: number,
     v: View,
     aa: number,
     bb: number,
     curMom: PatchMoments
-  ): { shapeIdx: number; edgeIdx: number; t: number } | null {
-    let bestD = PULSE_HIT_MAX_PX;
-    let best: { shapeIdx: number; edgeIdx: number; t: number } | null = null;
+  ): {
+    qx: number;
+    qy: number;
+    dist: number;
+    shapeIdx: number;
+    edgeIdx: number;
+    t: number;
+  } | null {
+    let bestD = Infinity;
+    let bestQx = 0;
+    let bestQy = 0;
+    let bestSi = -1;
+    let bestEi = 0;
+    let bestT = 0;
     for (let si = 0; si < flatShapes.length; si++) {
       const sh = flatShapes[si]!;
       const n = sh.pts.length;
@@ -506,79 +522,157 @@ export function initEinsteinHatBg(canvasId: string) {
         const { dist, t } = distPointToSeg(px, py, p0.x, p0.y, p1.x, p1.y);
         if (dist < bestD) {
           bestD = dist;
-          best = { shapeIdx: si, edgeIdx: ei, t };
+          bestQx = p0.x + t * (p1.x - p0.x);
+          bestQy = p0.y + t * (p1.y - p0.y);
+          bestSi = si;
+          bestEi = ei;
+          bestT = t;
         }
       }
     }
-    return best;
+    return bestSi >= 0 ? { qx: bestQx, qy: bestQy, dist: bestD, shapeIdx: bestSi, edgeIdx: bestEi, t: bestT } : null;
   }
 
-  function updatePulses(dt: number) {
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      const p = pulses[i]!;
-      p.bright *= Math.exp(-PULSE_BRIGHT_DECAY * dt);
-      p.t += PULSE_SPEED * dt;
-      const sh = flatShapes[p.shapeIdx];
-      if (!sh) {
-        pulses.splice(i, 1);
-        continue;
-      }
-      const n = sh.pts.length;
-      while (p.t >= 1) {
-        p.t -= 1;
-        p.edgeIdx = (p.edgeIdx + 1) % n;
-      }
-      if (p.bright < 0.012) pulses.splice(i, 1);
+  function shapeVerticesScreen(
+    sh: HatShape,
+    v: View,
+    aa: number,
+    bb: number,
+    curMom: PatchMoments
+  ): { x: number; y: number }[] {
+    return sh.pts.map((p) => {
+      const o = evalSym(p, aa, bb);
+      const st = stabilizePoint(o.x, o.y, curMom, refMoments);
+      return toScreen(st.x, st.y, v);
+    });
+  }
+
+  function perimeterLens(pts: { x: number; y: number }[]): { lens: number[]; perim: number } {
+    const n = pts.length;
+    const lens: number[] = [];
+    let perim = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const len = Math.hypot(pts[j].x - pts[i].x, pts[j].y - pts[i].y);
+      lens.push(len);
+      perim += len;
     }
+    return { lens, perim };
   }
 
-  function drawPulses(v: View, aa: number, bb: number, curMom: PatchMoments) {
+  function arcLengthAtEdge(lens: number[], edgeIdx: number, t: number): number {
+    let s = 0;
+    for (let i = 0; i < edgeIdx; i++) s += lens[i]!;
+    return s + t * lens[edgeIdx]!;
+  }
+
+  function pointAtArcLength(
+    pts: { x: number; y: number }[],
+    lens: number[],
+    perim: number,
+    s: number
+  ): { x: number; y: number } {
+    const n = lens.length;
+    if (n === 0) return { x: 0, y: 0 };
+    let u = s % perim;
+    if (u < 0) u += perim;
+    if (u >= perim - 1e-9) u = 0;
+    for (let i = 0; i < n; i++) {
+      const L = lens[i]!;
+      if (u <= L + 1e-9) {
+        const tt = L < 1e-9 ? 0 : Math.min(1, u / L);
+        const j = (i + 1) % n;
+        return {
+          x: pts[i].x + tt * (pts[j].x - pts[i].x),
+          y: pts[i].y + tt * (pts[j].y - pts[i].y),
+        };
+      }
+      u -= L;
+    }
+    return pts[0]!;
+  }
+
+  function drawRadialGlow(
+    x: number,
+    y: number,
+    radius: number,
+    strength: number,
+    dark: boolean
+  ) {
+    if (strength <= 0) return;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    if (dark) {
+      g.addColorStop(0, `rgba(235, 242, 255,${0.55 * strength})`);
+      g.addColorStop(0.35, `rgba(180, 200, 255,${0.22 * strength})`);
+      g.addColorStop(1, 'rgba(160, 190, 255,0)');
+    } else {
+      g.addColorStop(0, `rgba(110, 135, 255,${0.42 * strength})`);
+      g.addColorStop(0.35, `rgba(140, 165, 255,${0.18 * strength})`);
+      g.addColorStop(1, 'rgba(140, 165, 255,0)');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * PI);
+    ctx.fill();
+  }
+
+  /** Bidirectional energy along one tile’s perimeter from the hit; fades in time and along arc length. */
+  function drawLineWaves(v: View, aa: number, bb: number, curMom: PatchMoments, timeMs: number) {
     const dark = isDark();
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    for (const p of pulses) {
-      const sh = flatShapes[p.shapeIdx];
-      if (!sh) continue;
-      const n = sh.pts.length;
-      const ei = p.edgeIdx;
-      const oa = evalSym(sh.pts[ei]!, aa, bb);
-      const ob = evalSym(sh.pts[(ei + 1) % n]!, aa, bb);
-      const sa = stabilizePoint(oa.x, oa.y, curMom, refMoments);
-      const sb = stabilizePoint(ob.x, ob.y, curMom, refMoments);
-      const p0 = toScreen(sa.x, sa.y, v);
-      const p1 = toScreen(sb.x, sb.y, v);
-      const x = p0.x + p.t * (p1.x - p0.x);
-      const y = p0.y + p.t * (p1.y - p0.y);
-      const tTrail = Math.max(0, p.t - 0.14);
-      const x0 = p0.x + tTrail * (p1.x - p0.x);
-      const y0 = p0.y + tTrail * (p1.y - p0.y);
-      ctx.strokeStyle = dark
-        ? `rgba(210, 225, 255,${0.4 * p.bright})`
-        : `rgba(95, 120, 230,${0.35 * p.bright})`;
-      ctx.lineWidth = 2.4 * p.bright;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x, y);
-      ctx.stroke();
 
-      const r = 8 + 24 * Math.sqrt(p.bright);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      if (dark) {
-        g.addColorStop(0, `rgba(240, 248, 255,${0.6 * p.bright})`);
-        g.addColorStop(0.4, `rgba(170, 195, 255,${0.2 * p.bright})`);
-        g.addColorStop(1, 'rgba(170, 195, 255,0)');
-      } else {
-        g.addColorStop(0, `rgba(100, 125, 255,${0.45 * p.bright})`);
-        g.addColorStop(0.4, `rgba(130, 155, 255,${0.18 * p.bright})`);
-        g.addColorStop(1, 'rgba(130, 155, 255,0)');
+    const kept: LineWave[] = [];
+    for (const w of lineWaves) {
+      const ageSec = (timeMs - w.birthMs) / 1000;
+      const timeFade = Math.exp(-WAVE_TIME_DECAY * ageSec);
+      if (timeFade < 0.01) continue;
+
+      const sh = flatShapes[w.shapeIdx];
+      if (!sh) continue;
+
+      const pts = shapeVerticesScreen(sh, v, aa, bb, curMom);
+      const { lens, perim } = perimeterLens(pts);
+      if (perim < 1e-6) {
+        kept.push(w);
+        continue;
       }
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * PI);
-      ctx.fill();
+
+      const reach = Math.min(WAVE_SPEED_PX_PER_SEC * ageSec, perim * 0.5);
+      const pHit = pointAtArcLength(pts, lens, perim, w.s0);
+      const centerA = WAVE_BASE_BRIGHT * timeFade;
+      drawRadialGlow(
+        pHit.x,
+        pHit.y,
+        WAVE_DOT_RADIUS + WAVE_CENTER_EXTRA_R,
+        centerA * 1.22,
+        dark
+      );
+
+      for (let d = WAVE_SAMPLE_STEP_PX; d <= reach; d += WAVE_SAMPLE_STEP_PX) {
+        const spatial = Math.exp(-WAVE_SPACE_DECAY * d);
+        const a = WAVE_BASE_BRIGHT * timeFade * spatial;
+        if (a < 0.005) break;
+        const pf = pointAtArcLength(pts, lens, perim, w.s0 + d);
+        const pb = pointAtArcLength(pts, lens, perim, w.s0 - d);
+        drawRadialGlow(pf.x, pf.y, WAVE_DOT_RADIUS, a, dark);
+        drawRadialGlow(pb.x, pb.y, WAVE_DOT_RADIUS, a, dark);
+      }
+
+      kept.push(w);
     }
+    lineWaves.length = 0;
+    lineWaves.push(...kept);
+
+    ctx.restore();
+  }
+
+  function drawCursorGlowOnly() {
+    if (!pointerValid) return;
+    const dark = isDark();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    drawRadialGlow(pointerX, pointerY, CURSOR_GLOW_RADIUS, CURSOR_GLOW_STRENGTH, dark);
     ctx.restore();
   }
 
@@ -624,9 +718,6 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function tick(timeMs: number) {
-    const dt = lastFrameMs ? Math.min(0.05, (timeMs - lastFrameMs) / 1000) : 0;
-    lastFrameMs = timeMs;
-
     const wSlider = reducedMotion
       ? HAT_CLASSIC_SHAPE_V
       : 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
@@ -643,23 +734,40 @@ export function initEinsteinHatBg(canvasId: string) {
     lastBb = bb;
     lastCurMom = curMom;
 
-    if (!reducedMotion && pulses.length > 0) {
-      updatePulses(dt);
-    }
-
     drawFrame(v, aa, bb, curMom);
-    if (!reducedMotion && pulses.length > 0) {
-      drawPulses(v, aa, bb, curMom);
+
+    if (!reducedMotion) {
+      if (pointerValid) {
+        const hit = nearestEdgeHit(pointerX, pointerY, v, aa, bb, curMom);
+        const inContact = hit !== null && hit.dist < LINE_HIT_PX;
+        if (inContact && !prevLineContact) {
+          const sh = flatShapes[hit.shapeIdx];
+          if (sh) {
+            const pts = shapeVerticesScreen(sh, v, aa, bb, curMom);
+            const { lens, perim } = perimeterLens(pts);
+            if (perim > 1e-6) {
+              const s0 = arcLengthAtEdge(lens, hit.edgeIdx, hit.t);
+              lineWaves.push({ shapeIdx: hit.shapeIdx, s0, birthMs: timeMs });
+            }
+          }
+        }
+        prevLineContact = inContact;
+      } else {
+        prevLineContact = false;
+      }
+
+      drawLineWaves(v, aa, bb, curMom, timeMs);
+      drawCursorGlowOnly();
+    } else {
+      prevLineContact = false;
     }
 
     animId = requestAnimationFrame(tick);
   }
 
-  /** Use window-level move so pulses work over main content too (canvas stays behind text). */
+  /** Window-level move: glow works over main content; links stay clickable (canvas pointer-events none). */
   function onGlobalPointerMove(e: PointerEvent) {
     if (reducedMotion || !lastView) return;
-    const now = performance.now();
-    if (now - lastHoverSpawnMs < HOVER_SPAWN_INTERVAL_MS) return;
 
     const rect = canvas.getBoundingClientRect();
     const xCss = e.clientX - rect.left;
@@ -668,18 +776,15 @@ export function initEinsteinHatBg(canvasId: string) {
     const sy = rect.height > 1 ? lastView.h / rect.height : 1;
     const x = xCss * sx;
     const y = yCss * sy;
-    if (x < 0 || y < 0 || x > lastView.w || y > lastView.h) return;
 
-    const hit = findNearestEdge(x, y, lastView, lastAa, lastBb, lastCurMom);
-    if (!hit || pulses.length >= PULSE_MAX_COUNT) return;
+    if (x < 0 || y < 0 || x > lastView.w || y > lastView.h) {
+      pointerValid = false;
+      return;
+    }
 
-    lastHoverSpawnMs = now;
-    pulses.push({
-      shapeIdx: hit.shapeIdx,
-      edgeIdx: hit.edgeIdx,
-      t: hit.t,
-      bright: 1,
-    });
+    pointerValid = true;
+    pointerX = x;
+    pointerY = y;
   }
 
   function onResize() {

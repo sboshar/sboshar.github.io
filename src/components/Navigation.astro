@@ -1,6 +1,6 @@
 ---
 const navItems = [
-  { href: '/about', label: 'about' },
+  { href: '/', label: 'about' },
   { href: '/publications', label: 'publications' },
   { href: '/blog', label: 'blog' },
   { href: '/teaching', label: 'teaching' },
@@ -15,7 +15,7 @@ const currentPath = Astro.url.pathname;
     <a
       href={item.href}
       class={`text-sm hover:underline ${
-        currentPath === item.href || currentPath.startsWith(item.href + '/')
+        item.href === '/' ? currentPath === '/' : currentPath === item.href || currentPath.startsWith(item.href + '/')
           ? 'font-semibold' 
           : ''
       }`}

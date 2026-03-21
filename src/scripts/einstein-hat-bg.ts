@@ -185,7 +185,7 @@ function buildBaseTiles(): { H8: HatShape; H7: HatMeta } {
   }
 
   const quad: SymPt[] = [pts[1], pts[3], pts[9], pts[13]];
-  const ret: { H8: HatShape; H7: HatMeta } = {} as { H8: HatShape; H7: HatMeta };
+  const ret = {} as { H8: HatShape; H7: HatMeta };
 
   ret.H8 = new HatShape(pts, quad, 'single');
 
@@ -225,8 +225,7 @@ function buildSupertiles(sys: { H8: HatShape | HatMeta; H7: HatMeta }) {
 
   smeta.addChild(sing);
   for (const r of rules) {
-    const last = smeta.geoms[smeta.geoms.length - 1];
-    const q = last instanceof HatShape ? last.quad : last.quad;
+    const q = smeta.geoms[smeta.geoms.length - 1]!.quad;
     if (r[3]) {
       smeta.addChild(comp.rotateAndMatch(trot2(r[0]), r[1], q[r[2]]));
     } else {
@@ -234,15 +233,11 @@ function buildSupertiles(sys: { H8: HatShape | HatMeta; H7: HatMeta }) {
     }
   }
 
-  const g1 = smeta.geoms[1];
-  const g2 = smeta.geoms[2];
-  const g4 = smeta.geoms[4];
-  const g6 = smeta.geoms[6];
   smeta.quad = [
-    g1 instanceof HatShape ? g1.quad[3] : g1.quad[3],
-    g2 instanceof HatShape ? g2.quad[0] : g2.quad[0],
-    g4 instanceof HatShape ? g4.quad[3] : g4.quad[3],
-    g6 instanceof HatShape ? g6.quad[0] : g6.quad[0],
+    smeta.geoms[1]!.quad[3]!,
+    smeta.geoms[2]!.quad[0]!,
+    smeta.geoms[4]!.quad[3]!,
+    smeta.geoms[6]!.quad[0]!,
   ];
 
   const cmeta = new HatMeta();
@@ -407,8 +402,9 @@ function distPointToSeg(
 export function initEinsteinHatBg(canvasId: string) {
   const el = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const ctx0 = el?.getContext('2d');
-  if (!el || !ctx0) return () => { };
+  if (!el || !ctx0) return () => {};
 
+  // Re-bind after null guard so closures capture non-nullable types.
   const canvas = el;
   const ctx = ctx0;
 
@@ -458,8 +454,6 @@ export function initEinsteinHatBg(canvasId: string) {
     s: number;
     cx: number;
     cy: number;
-    cw: number;
-    ch: number;
   };
 
   let lastView: View | null = null;
@@ -480,8 +474,6 @@ export function initEinsteinHatBg(canvasId: string) {
       s,
       cx: refMoments.cx,
       cy: refMoments.cy,
-      cw: stableSpan,
-      ch: stableSpan,
     };
   }
 
@@ -750,10 +742,6 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function layout() {
-    resizeCanvas();
-  }
-
   function drawFrame(v: View, aa: number, bb: number, curMom: PatchMoments) {
     const dark = isDark();
     const stroke = dark ? EDGE_STROKE_DARK : EDGE_STROKE_LIGHT;
@@ -860,19 +848,15 @@ export function initEinsteinHatBg(canvasId: string) {
     }
   }
 
-  function onResize() {
-    layout();
-  }
-
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  layout();
+  resizeCanvas();
   window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
   animId = requestAnimationFrame(tick);
-  window.addEventListener('resize', onResize);
+  window.addEventListener('resize', resizeCanvas);
 
   return () => {
     cancelAnimationFrame(animId);
-    window.removeEventListener('resize', onResize);
+    window.removeEventListener('resize', resizeCanvas);
     window.removeEventListener('pointermove', onGlobalPointerMove);
   };
 }

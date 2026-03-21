@@ -1,0 +1,37 @@
+---
+/**
+ * Full-viewport background: H7/H8 hat continuum (Tile(a,b) morph).
+ * Geometry matches Kaplan’s h7h8.js / https://cs.uwaterloo.ca/~csk/hat/h7h8.html
+ * (Tile(a,b) with a = αv, b = α(1−v), α = 1+√3). BSD-3-Clause hat family.
+ */
+---
+
+<div class="einstein-hat-bg-root" aria-hidden="true">
+  <canvas id="einstein-hat-canvas" width="300" height="150"></canvas>
+</div>
+
+<script>
+  import { initEinsteinHatBg } from '../scripts/einstein-hat-bg.ts';
+
+  initEinsteinHatBg('einstein-hat-canvas');
+</script>
+
+<style>
+  .einstein-hat-bg-root {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .einstein-hat-bg-root canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0.42;
+  }
+
+  :global(.dark) .einstein-hat-bg-root canvas {
+    opacity: 0.38;
+  }
+</style>

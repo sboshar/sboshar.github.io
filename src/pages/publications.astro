@@ -1,6 +1,23 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import type { Publication } from '../data/publications';
 import { papers, workshops, formatAuthors } from '../data/publications';
+
+/** Same calendar year → one column; preserves list order within each year. */
+function groupPapersByYear(list: Publication[]): { year: string; items: Publication[] }[] {
+  const order: string[] = [];
+  const byYear = new Map<string, Publication[]>();
+  for (const p of list) {
+    if (!byYear.has(p.year)) {
+      order.push(p.year);
+      byYear.set(p.year, []);
+    }
+    byYear.get(p.year)!.push(p);
+  }
+  return order.map((year) => ({ year, items: byYear.get(year)! }));
+}
+
+const paperYearGroups = groupPapersByYear(papers);
 ---
 
 <BaseLayout title="Publications">
@@ -11,42 +28,49 @@ import { papers, workshops, formatAuthors } from '../data/publications';
     <div class="space-y-6">
       <h2 class="text-2xl font-bold">Papers</h2>
       <div class="space-y-6">
-        {papers.map((pub) => {
-          const authorInfo = formatAuthors(pub.authors);
-          return (
-            <article class="flex items-start gap-4 pb-6 border-b border-gray-200 dark:border-gray-800 last:border-0">
-              <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1">
-                {pub.abbr}
-              </span>
-              <div class="flex-1 space-y-1">
-                <h3 class="text-lg font-medium">
-                  <a href={pub.link} class="hover:underline">
-                    {pub.title}
-                  </a>
-                </h3>
-                <p class="text-sm">
-                  <span set:html={authorInfo.html} />
-                  {authorInfo.hasMore && (
-                    <a href={pub.link} class="underline hover:no-underline">
-                      {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}
-                    </a>
-                  )}
-                </p>
-                <p class="text-sm italic text-gray-600 dark:text-gray-400">
-                  {pub.isThesis ? `${pub.school}, ${pub.year}` : `${pub.journal}, ${pub.year}`}
-                  {pub.doi && (
-                    <span> • <a href={`https://doi.org/${pub.doi}`} class="hover:underline not-italic">DOI</a></span>
-                  )}
-                </p>
-              </div>
-              {!pub.isThesis && (
-                <div class="text-4xl font-light text-gray-300 dark:text-gray-600">
-                  {pub.year}
-                </div>
-              )}
-            </article>
-          );
-        })}
+        {paperYearGroups.map((group) => (
+          <div class="flex items-start gap-4 pb-6 border-b border-gray-200 dark:border-gray-800 last:border-0">
+            <div class="flex-1 min-w-0 space-y-6">
+              {group.items.map((pub) => {
+                const authorInfo = formatAuthors(pub.authors);
+                return (
+                  <article class="flex items-start gap-4">
+                    <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1 shrink-0">
+                      {pub.abbr}
+                    </span>
+                    <div class="flex-1 min-w-0 space-y-1">
+                      <h3 class="text-lg font-medium">
+                        <a href={pub.link} class="hover:underline">
+                          {pub.title}
+                        </a>
+                      </h3>
+                      <p class="text-sm">
+                        <span set:html={authorInfo.html} />
+                        {authorInfo.hasMore && (
+                          <a href={pub.link} class="underline hover:no-underline">
+                            {authorInfo.moreCount} more author{authorInfo.moreCount > 1 ? 's' : ''}
+                          </a>
+                        )}
+                      </p>
+                      <p class="text-sm italic text-gray-600 dark:text-gray-400">
+                        {pub.isThesis ? pub.school : pub.journal}
+                        {pub.doi && (
+                          <span>
+                            {' '}
+                            • <a href={`https://doi.org/${pub.doi}`} class="hover:underline not-italic">DOI</a>
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div class="text-4xl font-light text-gray-300 dark:text-gray-600 tabular-nums shrink-0 pt-1">
+              {group.year}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
 

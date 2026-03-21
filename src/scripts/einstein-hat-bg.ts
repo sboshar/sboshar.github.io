@@ -373,13 +373,13 @@ const EDGE_LINE_WIDTH_DARK = 0.65;
 const CURSOR_GLOW_RADIUS = 6;
 const CURSOR_GLOW_STRENGTH = 0.2;
 const LINE_HIT_PX = 42;
-const WAVE_SPEED_PX_PER_SEC = 295;
-const WAVE_SPACE_DECAY = 0.03;
-const WAVE_TIME_DECAY = 0.36;
+const WAVE_SPEED_PX_PER_SEC = 90;
+const WAVE_TIME_DECAY = 0.72;
 const WAVE_SAMPLE_STEP_PX = 4;
-const WAVE_DOT_RADIUS = 4.1;
-const WAVE_CENTER_EXTRA_R = 1.75;
-const WAVE_BASE_BRIGHT = 0.9;
+
+const WAVE_BASE_BRIGHT = 0.855;
+/** Half-width in px of the Gaussian pulse envelope around each moving front. */
+const WAVE_PULSE_HALF_WIDTH_PX = 55;
 /** Min ms between successive waves on the same tile (allows continuous emission while sliding). */
 const WAVE_SPAWN_COOLDOWN_MS = 60;
 
@@ -641,25 +641,43 @@ export function initEinsteinHatBg(canvasId: string) {
         continue;
       }
 
-      const reach = Math.min(WAVE_SPEED_PX_PER_SEC * ageSec, perim * 0.5);
-      const pHit = pointAtArcLength(pts, lens, perim, w.s0);
-      const centerA = WAVE_BASE_BRIGHT * timeFade;
-      drawRadialGlow(
-        pHit.x,
-        pHit.y,
-        WAVE_DOT_RADIUS + WAVE_CENTER_EXTRA_R,
-        centerA * 1.1,
-        dark
-      );
+      const reach = WAVE_SPEED_PX_PER_SEC * ageSec;
 
-      for (let d = WAVE_SAMPLE_STEP_PX; d <= reach; d += WAVE_SAMPLE_STEP_PX) {
-        const spatial = Math.exp(-WAVE_SPACE_DECAY * d);
-        const a = WAVE_BASE_BRIGHT * timeFade * spatial;
-        if (a < 0.005) break;
-        const pf = pointAtArcLength(pts, lens, perim, w.s0 + d);
-        const pb = pointAtArcLength(pts, lens, perim, w.s0 - d);
-        drawRadialGlow(pf.x, pf.y, WAVE_DOT_RADIUS, a, dark);
-        drawRadialGlow(pb.x, pb.y, WAVE_DOT_RADIUS, a, dark);
+      // Two continuous glowing strokes traveling in opposite directions
+      // Fade in over ~0.15s so overlapping pulses at birth don't create a big flash
+      const fadeIn = Math.min(1, ageSec * 6.5);
+      const a = WAVE_BASE_BRIGHT * timeFade * fadeIn;
+      for (const side of [-1, 1] as const) {
+        const frontS = w.s0 + side * reach;
+
+        // Sample points along the pulse segment
+        const samples: { x: number; y: number }[] = [];
+        for (let s = frontS - WAVE_PULSE_HALF_WIDTH_PX; s <= frontS + WAVE_PULSE_HALF_WIDTH_PX; s += WAVE_SAMPLE_STEP_PX) {
+          samples.push(pointAtArcLength(pts, lens, perim, s));
+        }
+        if (samples.length < 2) continue;
+
+        const buildPath = () => {
+          ctx.beginPath();
+          ctx.moveTo(samples[0]!.x, samples[0]!.y);
+          for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
+        };
+
+        // Wide soft outer glow
+        buildPath();
+        ctx.strokeStyle = dark
+          ? `rgba(185,210,255,${a * 0.2})`
+          : `rgba(100,120,255,${a * 0.18})`;
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        // Bright core
+        buildPath();
+        ctx.strokeStyle = dark
+          ? `rgba(225,238,255,${a * 0.78})`
+          : `rgba(140,160,255,${a * 0.72})`;
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
       }
 
       kept.push(w);
@@ -667,6 +685,44 @@ export function initEinsteinHatBg(canvasId: string) {
     lineWaves.length = 0;
     lineWaves.push(...kept);
 
+    ctx.restore();
+  }
+
+  /** Steady glow drawn every frame at the wire segment closest to the cursor. */
+  function drawCursorLineGlow(v: View, aa: number, bb: number, curMom: PatchMoments) {
+    if (!pointerValid) return;
+    const hit = nearestEdgeHit(pointerX, pointerY, v, aa, bb, curMom);
+    if (!hit || hit.dist >= LINE_HIT_PX) return;
+    const sh = flatShapes[hit.shapeIdx];
+    if (!sh) return;
+    const pts = shapeVerticesScreen(sh, v, aa, bb, curMom);
+    const { lens, perim } = perimeterLens(pts);
+    if (perim < 1e-6) return;
+
+    const dark = isDark();
+    const half = WAVE_PULSE_HALF_WIDTH_PX * 0.6;
+    const centerS = arcLengthAtEdge(lens, hit.edgeIdx, hit.t);
+    const samples: { x: number; y: number }[] = [];
+    for (let s = centerS - half; s <= centerS + half; s += WAVE_SAMPLE_STEP_PX) {
+      samples.push(pointAtArcLength(pts, lens, perim, s));
+    }
+    if (samples.length < 2) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(samples[0]!.x, samples[0]!.y);
+    for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
+    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.12)' : 'rgba(110,130,255,0.10)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(samples[0]!.x, samples[0]!.y);
+    for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
+    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.45)' : 'rgba(150,170,255,0.40)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -740,7 +796,11 @@ export function initEinsteinHatBg(canvasId: string) {
     drawFrame(v, aa, bb, curMom);
 
     if (!reducedMotion) {
+      // Keep emitting waves even when the cursor is stationary
+      if (pointerValid) trySpawnWaveAt(pointerX, pointerY, timeMs);
+
       drawLineWaves(v, aa, bb, curMom, timeMs);
+      drawCursorLineGlow(v, aa, bb, curMom);
       drawCursorGlowOnly();
     }
 

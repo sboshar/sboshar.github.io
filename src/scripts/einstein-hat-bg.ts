@@ -366,6 +366,8 @@ export function hatOutlineFromShapeParam(w: number): { x: number; y: number }[] 
 
 const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.32)';
 const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.26)';
+/** Matches `global.css` `:root --color-text` (#1a1a1a) for light-mode pulse/cursor glow. */
+const TEXT_RGB_LIGHT = '26, 26, 26';
 const EDGE_LINE_WIDTH_LIGHT = 0.7;
 const EDGE_LINE_WIDTH_DARK = 0.65;
 
@@ -609,9 +611,9 @@ export function initEinsteinHatBg(canvasId: string) {
       g.addColorStop(0.35, `rgba(180, 200, 255,${0.17 * strength})`);
       g.addColorStop(1, 'rgba(160, 190, 255,0)');
     } else {
-      g.addColorStop(0, `rgba(110, 135, 255,${0.34 * strength})`);
-      g.addColorStop(0.35, `rgba(140, 165, 255,${0.14 * strength})`);
-      g.addColorStop(1, 'rgba(140, 165, 255,0)');
+      g.addColorStop(0, `rgba(${TEXT_RGB_LIGHT},${0.42 * strength})`);
+      g.addColorStop(0.35, `rgba(${TEXT_RGB_LIGHT},${0.16 * strength})`);
+      g.addColorStop(1, `rgba(${TEXT_RGB_LIGHT},0)`);
     }
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -623,7 +625,8 @@ export function initEinsteinHatBg(canvasId: string) {
   function drawLineWaves(v: View, aa: number, bb: number, curMom: PatchMoments, timeMs: number) {
     const dark = isDark();
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    // Dark text-colored pulse on cream bg needs source-over; lighter only works for bright tints.
+    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
 
     const kept: LineWave[] = [];
     for (const w of lineWaves) {
@@ -667,7 +670,7 @@ export function initEinsteinHatBg(canvasId: string) {
         buildPath();
         ctx.strokeStyle = dark
           ? `rgba(185,210,255,${a * 0.15})`
-          : `rgba(100,120,255,${a * 0.13})`;
+          : `rgba(${TEXT_RGB_LIGHT},${a * 0.22})`;
         ctx.lineWidth = 3.5;
         ctx.stroke();
 
@@ -675,7 +678,7 @@ export function initEinsteinHatBg(canvasId: string) {
         buildPath();
         ctx.strokeStyle = dark
           ? `rgba(225,238,255,${a * 0.6})`
-          : `rgba(140,160,255,${a * 0.55})`;
+          : `rgba(${TEXT_RGB_LIGHT},${a * 0.72})`;
         ctx.lineWidth = 1.8;
         ctx.stroke();
       }
@@ -709,18 +712,18 @@ export function initEinsteinHatBg(canvasId: string) {
     if (samples.length < 2) return;
 
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);
     for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
-    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.08)' : 'rgba(110,130,255,0.07)';
+    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.08)' : `rgba(${TEXT_RGB_LIGHT},0.1)`;
     ctx.lineWidth = 5;
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);
     for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
-    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.32)' : 'rgba(150,170,255,0.28)';
+    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.32)' : `rgba(${TEXT_RGB_LIGHT},0.38)`;
     ctx.lineWidth = 1.2;
     ctx.stroke();
     ctx.restore();
@@ -730,7 +733,7 @@ export function initEinsteinHatBg(canvasId: string) {
     if (!pointerValid) return;
     const dark = isDark();
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
     drawRadialGlow(pointerX, pointerY, CURSOR_GLOW_RADIUS, CURSOR_GLOW_STRENGTH, dark);
     ctx.restore();
   }

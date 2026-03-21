@@ -36,9 +36,10 @@
     pointer-events: none;
     opacity: 0.3;
     /* One GPU filter pass over the bitmap — replaces heavy canvas shadowBlur per tile. */
+    /* Light mode: halo matches body text (#1a1a1a) */
     filter: blur(0.45px)
-      drop-shadow(0 0 10px rgba(130, 150, 255, 0.32))
-      drop-shadow(0 0 24px rgba(130, 150, 255, 0.16));
+      drop-shadow(0 0 10px rgba(26, 26, 26, 0.14))
+      drop-shadow(0 0 24px rgba(26, 26, 26, 0.08));
     transform: translateZ(0);
   }
 

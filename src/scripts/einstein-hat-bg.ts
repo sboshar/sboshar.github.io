@@ -371,13 +371,13 @@ const EDGE_LINE_WIDTH_DARK = 0.65;
 
 /** Tiny cursor halo; line waves propagate both ways along tile perimeter when you touch a wire. */
 const CURSOR_GLOW_RADIUS = 6;
-const CURSOR_GLOW_STRENGTH = 0.2;
-const LINE_HIT_PX = 42;
+const CURSOR_GLOW_STRENGTH = 0.14;
+const LINE_HIT_PX = 10;
 const WAVE_SPEED_PX_PER_SEC = 90;
 const WAVE_TIME_DECAY = 0.72;
 const WAVE_SAMPLE_STEP_PX = 4;
 
-const WAVE_BASE_BRIGHT = 0.855;
+const WAVE_BASE_BRIGHT = 0.68;
 /** Half-width in px of the Gaussian pulse envelope around each moving front. */
 const WAVE_PULSE_HALF_WIDTH_PX = 55;
 /** Min ms between successive waves on the same tile (allows continuous emission while sliding). */
@@ -405,7 +405,7 @@ function distPointToSeg(
 export function initEinsteinHatBg(canvasId: string) {
   const el = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const ctx0 = el?.getContext('2d');
-  if (!el || !ctx0) return () => {};
+  if (!el || !ctx0) return () => { };
 
   const canvas = el;
   const ctx = ctx0;
@@ -420,7 +420,7 @@ export function initEinsteinHatBg(canvasId: string) {
     root = buildH8Patch(SUBST_STEPS);
   } catch (e) {
     console.error('[einstein-hat-bg] H8 patch build failed', e);
-    return () => {};
+    return () => { };
   }
 
   const flatShapes = flattenShapes(root);
@@ -605,12 +605,12 @@ export function initEinsteinHatBg(canvasId: string) {
     if (strength <= 0) return;
     const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
     if (dark) {
-      g.addColorStop(0, `rgba(235, 242, 255,${0.55 * strength})`);
-      g.addColorStop(0.35, `rgba(180, 200, 255,${0.22 * strength})`);
+      g.addColorStop(0, `rgba(235, 242, 255,${0.44 * strength})`);
+      g.addColorStop(0.35, `rgba(180, 200, 255,${0.17 * strength})`);
       g.addColorStop(1, 'rgba(160, 190, 255,0)');
     } else {
-      g.addColorStop(0, `rgba(110, 135, 255,${0.42 * strength})`);
-      g.addColorStop(0.35, `rgba(140, 165, 255,${0.18 * strength})`);
+      g.addColorStop(0, `rgba(110, 135, 255,${0.34 * strength})`);
+      g.addColorStop(0.35, `rgba(140, 165, 255,${0.14 * strength})`);
       g.addColorStop(1, 'rgba(140, 165, 255,0)');
     }
     ctx.fillStyle = g;
@@ -666,16 +666,16 @@ export function initEinsteinHatBg(canvasId: string) {
         // Wide soft outer glow
         buildPath();
         ctx.strokeStyle = dark
-          ? `rgba(185,210,255,${a * 0.2})`
-          : `rgba(100,120,255,${a * 0.18})`;
+          ? `rgba(185,210,255,${a * 0.15})`
+          : `rgba(100,120,255,${a * 0.13})`;
         ctx.lineWidth = 3.5;
         ctx.stroke();
 
         // Bright core
         buildPath();
         ctx.strokeStyle = dark
-          ? `rgba(225,238,255,${a * 0.78})`
-          : `rgba(140,160,255,${a * 0.72})`;
+          ? `rgba(225,238,255,${a * 0.6})`
+          : `rgba(140,160,255,${a * 0.55})`;
         ctx.lineWidth = 1.8;
         ctx.stroke();
       }
@@ -714,13 +714,13 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);
     for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
-    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.12)' : 'rgba(110,130,255,0.10)';
+    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.08)' : 'rgba(110,130,255,0.07)';
     ctx.lineWidth = 5;
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);
     for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
-    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.45)' : 'rgba(150,170,255,0.40)';
+    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.32)' : 'rgba(150,170,255,0.28)';
     ctx.lineWidth = 1.2;
     ctx.stroke();
     ctx.restore();

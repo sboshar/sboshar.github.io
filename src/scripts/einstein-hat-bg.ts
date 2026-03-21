@@ -464,10 +464,17 @@ export function initEinsteinHatBg(canvasId: string) {
   let lastBb = bbRef;
   let lastCurMom: PatchMoments = refMoments;
 
+  /**
+   * Logical size used for drawing + getView — always matches the fixed background layer, not raw
+   * window.innerHeight (mobile URL bar / visual viewport changes desync canvas buffer vs math → shift/lag).
+   */
+  let viewportCssW = 0;
+  let viewportCssH = 0;
+
   /** Zoom follows current morph bbox so the pattern doesn’t grow/shrink on screen (fixed maxSpan broke that). */
   function getView(stableSpan: number): View {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = viewportCssW > 0 ? viewportCssW : window.innerWidth;
+    const h = viewportCssH > 0 ? viewportCssH : window.innerHeight;
     const pad = 1.08;
     const baseS = (Math.min(w, h) / stableSpan) * pad * 0.92;
     const zoom = TILE_ZOOM * (touchPrimary ? TILE_ZOOM_MOBILE_FACTOR : 1);
@@ -714,15 +721,29 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function resizeCanvas() {
+    const root = canvas.parentElement;
+    /** Match the fixed `inset:0` layer — avoids innerWidth/innerHeight fighting layout on mobile scroll. */
+    const w = Math.max(1, Math.round(root?.clientWidth ?? window.innerWidth));
+    const h = Math.max(1, Math.round(root?.clientHeight ?? window.innerHeight));
+    viewportCssW = w;
+    viewportCssH = h;
+
     /** Cap DPR: fewer pixels to fill each frame (big win vs jitter at high DPR). */
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  let resizeRaf = 0;
+  function scheduleResizeCanvas() {
+    if (resizeRaf) return;
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      resizeCanvas();
+    });
   }
 
   function drawFrame(v: View, aa: number, bb: number, curMom: PatchMoments) {
@@ -847,13 +868,31 @@ export function initEinsteinHatBg(canvasId: string) {
   resizeCanvas();
   window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
   animId = requestAnimationFrame(tick);
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', scheduleResizeCanvas, { passive: true });
+  window.addEventListener('orientationchange', scheduleResizeCanvas, { passive: true });
+
+  const vv = window.visualViewport;
+  if (vv) {
+    /** `resize` only — `scroll` fires every frame while panning and would thrash canvas realloc. */
+    vv.addEventListener('resize', scheduleResizeCanvas, { passive: true });
+  }
+
+  const rootEl = canvas.parentElement;
+  const resizeObserver =
+    rootEl &&
+    typeof ResizeObserver !== 'undefined' &&
+    new ResizeObserver(() => scheduleResizeCanvas());
+  if (resizeObserver && rootEl) resizeObserver.observe(rootEl);
 
   return () => {
     cancelAnimationFrame(animId);
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
     motionMq.removeEventListener('change', syncInputMode);
     touchMq.removeEventListener('change', syncInputMode);
-    window.removeEventListener('resize', resizeCanvas);
+    window.removeEventListener('resize', scheduleResizeCanvas);
+    window.removeEventListener('orientationchange', scheduleResizeCanvas);
+    if (vv) vv.removeEventListener('resize', scheduleResizeCanvas);
+    resizeObserver?.disconnect();
     window.removeEventListener('pointermove', onGlobalPointerMove);
   };
 }

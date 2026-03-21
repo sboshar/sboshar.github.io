@@ -27,6 +27,8 @@
     inset: 0;
     z-index: 1;
     pointer-events: none;
+    /* Own compositing layer: less repaint coupling while main content scrolls on mobile. */
+    isolation: isolate;
   }
 
   .einstein-hat-bg-root canvas {

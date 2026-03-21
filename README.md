@@ -1,15 +1,27 @@
 # Personal site (Astro, static)
 
+Live at **`https://sboshar.github.io/`** (user site — see below).
+
 ## Host for free (GitHub Pages)
 
-1. In the repo on GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-2. Push to `main`; the **Deploy static site to GitHub Pages** workflow builds and publishes `dist/`.
-3. **`astro.config.mjs`** must match your URL:
-   - **Project site** (default): `https://<user>.github.io/<repo>/`  
-     Set `site` to `https://<user>.github.io` and `base` to `'/<repo>'` (e.g. `'/portfolio'`).
-   - **User site** (`<user>.github.io` from a `username.github.io` repo) or **custom domain at root**: set `base: '/'` and set `site` to that full URL.
+1. Repo on GitHub must be named **`sboshar.github.io`** (exactly) under account **`sboshar`**.  
+   - That is the only way to get **`https://sboshar.github.io/`** without a custom domain.  
+   - A repo named `portfolio` always publishes to **`https://sboshar.github.io/portfolio/`** — you cannot remove `/portfolio` while deploying from that repo name.
 
-After changing `site` / `base`, commit and push so the next deploy picks it up.
+2. **Settings → Pages → Source: GitHub Actions**; push **`main`** so the workflow deploys `dist/`.
+
+3. **`astro.config.mjs`** uses `site: 'https://sboshar.github.io'` and **`base: '/'`**.  
+   If you ever deploy from a **project** repo again, set `base: '/<repo-name>'` and update `public/sitemap.xml` + `public/robots.txt`.
+
+### Moving from `portfolio` to root URL
+
+1. On GitHub: **New repository** → name **`sboshar.github.io`** → public.  
+2. Copy this project in (push the same code), including **`.github/workflows/deploy.yml`**.  
+3. Turn on **Pages → GitHub Actions** on the new repo.  
+4. Optional: archive or delete the old **`portfolio`** repo, or keep it and add a note that the site moved.
+
+5. Locally, point git at the new remote, e.g.  
+   `git remote set-url origin https://github.com/sboshar/sboshar.github.io.git`
 
 ## Local
 

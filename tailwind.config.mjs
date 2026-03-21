@@ -7,6 +7,7 @@ export default {
       colors: {
         'bg-light': '#F5F3ED',
         'bg-dark': '#252525',
+        divider: 'var(--color-divider)',
       },
     },
   },

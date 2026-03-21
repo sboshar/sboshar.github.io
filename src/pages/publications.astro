@@ -29,7 +29,7 @@ const paperYearGroups = groupPapersByYear(papers);
       <h2 class="text-2xl font-bold">Papers</h2>
       <div class="space-y-6">
         {paperYearGroups.map((group) => (
-          <div class="flex items-start gap-4 pb-6 border-b border-gray-200 dark:border-gray-800 last:border-0">
+          <div class="flex items-start gap-4 pb-6 border-b border-divider last:border-0">
             <div class="flex-1 min-w-0 space-y-6">
               {group.items.map((pub) => {
                 const authorInfo = formatAuthors(pub.authors);
@@ -81,7 +81,7 @@ const paperYearGroups = groupPapersByYear(papers);
         {workshops.map((pub) => {
           const authorInfo = formatAuthors(pub.authors);
           return (
-            <article class="flex items-start gap-4 pb-6 border-b border-gray-200 dark:border-gray-800 last:border-0">
+            <article class="flex items-start gap-4 pb-6 border-b border-divider last:border-0">
               <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1">
                 {pub.abbr}
               </span>

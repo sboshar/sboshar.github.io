@@ -409,7 +409,7 @@ export function initEinsteinHatBg(canvasId: string) {
 
   const SUBST_STEPS = 4;
   /** Higher = larger tiles on screen (scale is fixed from classic-hat bbox, not current morph). */
-  const TILE_ZOOM = 10;
+  const TILE_ZOOM = 8;
   /** Extra zoom on touch-primary viewports so the tiling reads better on small screens. */
   const TILE_ZOOM_MOBILE_FACTOR = 1.28;
   const SHAPE_CYCLE_MS = 52000;

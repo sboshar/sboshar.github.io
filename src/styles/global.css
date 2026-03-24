@@ -9,6 +9,8 @@
   --color-text-muted: #666666;
   --color-border: #e5e5e5;
   --color-divider: color-mix(in srgb, var(--color-text-muted) 22%, transparent);
+  /** Section rules; slightly heavier than the hat wireframe for readability. */
+  --divider-stroke: 1.5px;
 }
 
 .dark {
@@ -18,10 +20,20 @@
   --color-text-muted: #999999;
   --color-border: #333333;
   --color-divider: color-mix(in srgb, var(--color-text) 18%, transparent);
+  --divider-stroke: 1.5px;
 }
 
 body {
   background-color: var(--global-bg-color);
   color: var(--color-text);
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+@layer utilities {
+  .divider-rule-t {
+    border-top: var(--divider-stroke) solid var(--color-divider);
+  }
+  .divider-rule-b {
+    border-bottom: var(--divider-stroke) solid var(--color-divider);
+  }
 }

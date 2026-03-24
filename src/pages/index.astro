@@ -56,13 +56,13 @@ const personJsonLd = JSON.stringify({
       </div>
     </div>
 
-    <div class="space-y-6 pt-8 border-t border-divider">
+    <div class="space-y-6 pt-8 divider-rule-t">
       <h2 class="text-2xl font-bold">Selected Publications</h2>
       <ul class="space-y-6">
         {selectedPublications.map((pub) => {
           const authorInfo = formatAuthors(pub.authors);
           return (
-            <li class="flex items-start gap-4 pb-6 border-b border-divider last:border-0">
+            <li class="flex items-start gap-4 pb-6 divider-rule-b last:border-0">
               <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1">
                 {pub.abbr}
               </span>
@@ -99,7 +99,7 @@ const personJsonLd = JSON.stringify({
     </div>
 
     <!-- Social Links -->
-    <div class="pt-8 border-t border-divider">
+    <div class="pt-8 divider-rule-t">
       <div class="flex items-center gap-6">
         <a href="mailto:s.t.boshar@gmail.com" class="text-black dark:text-white hover:opacity-70 transition-opacity" aria-label="Email">
           <i class="fa-solid fa-envelope text-xl"></i>

@@ -373,7 +373,7 @@ const WAVE_TIME_DECAY = 1.0;
 const WAVE_SAMPLE_STEP_PX = 4;
 
 /** Overall pulse intensity; tweak this alone before changing stroke alphas or canvas opacity. */
-const WAVE_BASE_BRIGHT = 0.50;
+const WAVE_BASE_BRIGHT = 0.32;
 /** Half-width in px of the Gaussian pulse envelope around each moving front. */
 const WAVE_PULSE_HALF_WIDTH_PX = 65;
 /** Min ms between successive waves on the same tile (allows continuous emission while sliding). */
@@ -658,7 +658,7 @@ export function initEinsteinHatBg(canvasId: string) {
         // Wide soft outer glow
         buildPath();
         ctx.strokeStyle = mkGrad(
-          dark ? `rgba(185,210,255,${a * 0.15})` : `rgba(${TEXT_RGB_LIGHT},${a * 0.22})`,
+          dark ? `rgba(185,210,255,${a * 0.10})` : `rgba(${TEXT_RGB_LIGHT},${a * 0.14})`,
           dark ? `rgba(185,210,255,0)` : `rgba(${TEXT_RGB_LIGHT},0)`,
         );
         ctx.lineWidth = 3.5;
@@ -667,7 +667,7 @@ export function initEinsteinHatBg(canvasId: string) {
         // Bright core
         buildPath();
         ctx.strokeStyle = mkGrad(
-          dark ? `rgba(225,238,255,${a * 0.6})` : `rgba(${TEXT_RGB_LIGHT},${a * 0.72})`,
+          dark ? `rgba(225,238,255,${a * 0.38})` : `rgba(${TEXT_RGB_LIGHT},${a * 0.46})`,
           dark ? `rgba(225,238,255,0)` : `rgba(${TEXT_RGB_LIGHT},0)`,
         );
         ctx.lineWidth = 1.8;
@@ -708,13 +708,13 @@ export function initEinsteinHatBg(canvasId: string) {
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);
     for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
-    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.08)' : `rgba(${TEXT_RGB_LIGHT},0.1)`;
+    ctx.strokeStyle = dark ? 'rgba(200,225,255,0.05)' : `rgba(${TEXT_RGB_LIGHT},0.065)`;
     ctx.lineWidth = 5;
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(samples[0]!.x, samples[0]!.y);
     for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i]!.x, samples[i]!.y);
-    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.32)' : `rgba(${TEXT_RGB_LIGHT},0.38)`;
+    ctx.strokeStyle = dark ? 'rgba(230,242,255,0.20)' : `rgba(${TEXT_RGB_LIGHT},0.24)`;
     ctx.lineWidth = 1.2;
     ctx.stroke();
     ctx.restore();

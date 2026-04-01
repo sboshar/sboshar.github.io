@@ -13,66 +13,82 @@ const talks = [
 const lectures = [
   {
     title: "Finite Kakeya Conjecture",
-    description: "Introductory Lecture on Polnomial Method solution to the Finite Kakeya conjecture as part of 18.204 @ MIT",
+    description:
+      "Introductory Lecture on Polynomial Method solution to the Finite Kakeya conjecture as part of 18.204 @ MIT",
     redirect: "https://drive.google.com/file/d/1QCKVmmhYZoHKx0iuogY6KC1ELKU9wApP/view?usp=sharing",
-    importance: 1
+    importance: 1,
   },
   {
     title: "Spiking Hardware",
     description: "Should we mimic spiking in hardware? 3hr lecture taught by myself and Grace Song.",
     redirect: "https://docs.google.com/presentation/d/1QAonRe5iFVq37-iV2sHSKSGwvzh5jB9XSiHMaRJY-L0/edit?usp=sharing",
-    importance: 3
-  }
+    importance: 3,
+  },
 ];
 ---
 
 <BaseLayout title="Teaching">
-  <div class="space-y-12">
-    <div class="space-y-2">
+  <div>
+    <header class="space-y-2 pb-8">
       <h1 class="text-4xl font-bold">teaching</h1>
-      <p class="text-sm">
+      <p class="text-sm text-gray-600 dark:text-gray-400">
         Lectures I have (co-)taught, plus occasional seminar talks.
       </p>
-    </div>
+    </header>
 
-    <div class="space-y-8 pt-8 divider-rule-t">
-      <h2 class="text-2xl font-bold">talks</h2>
-      {talks.map((talk) => (
-        <article class="pb-8 border-b-2 border-black dark:border-white last:border-0">
-          <h3 class="text-xl font-bold lowercase mb-2">
-            <a href={talk.recordingUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
-              {talk.title.toLowerCase()}
-            </a>
-          </h3>
-          <p class="text-sm">
-            {talk.description}{' '}
-            <a href={talk.seriesUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
-              Series page
-            </a>
-            {' · '}
-            <a href={talk.recordingUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
-              Recording
-            </a>
-          </p>
-        </article>
-      ))}
-    </div>
+    <section class="divider-rule-t pt-8" aria-labelledby="teaching-talks-heading">
+      <h2 id="teaching-talks-heading" class="text-2xl font-bold mb-6">
+        talks
+      </h2>
+      <div>
+        {talks.map((talk) => (
+          <article class="pt-6 pb-6 divider-rule-b first:pt-0 last:border-b-0 last:pb-0">
+            <h3 class="text-xl font-bold lowercase mb-2">
+              <a href={talk.recordingUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
+                {talk.title.toLowerCase()}
+              </a>
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+              {talk.description}{' '}
+              <a
+                href={talk.seriesUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="hover:underline text-gray-700 dark:text-gray-300"
+              >
+                Series page
+              </a>
+              {' · '}
+              <a
+                href={talk.recordingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="hover:underline text-gray-700 dark:text-gray-300"
+              >
+                Recording
+              </a>
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
 
-    <div class="space-y-8 pt-8 divider-rule-t">
-      <h2 class="text-2xl font-bold">lectures</h2>
-      {lectures.map((lecture) => (
-        <article class="pb-8 border-b-2 border-black dark:border-white last:border-0">
-          <h2 class="text-xl font-bold lowercase mb-2">
-            <a href={lecture.redirect} target="_blank" rel="noopener noreferrer" class="hover:underline">
-              {lecture.title.toLowerCase()}
-            </a>
-          </h2>
-          <p class="text-sm">
-            {lecture.description}
-          </p>
-        </article>
-      ))}
-    </div>
-
+    <section class="divider-rule-t pt-8" aria-labelledby="teaching-lectures-heading">
+      <h2 id="teaching-lectures-heading" class="text-2xl font-bold mb-6">
+        lectures
+      </h2>
+      <div>
+        {lectures.map((lecture) => (
+          <article class="pt-6 pb-6 divider-rule-b first:pt-0 last:border-b-0 last:pb-0">
+            <h3 class="text-xl font-bold lowercase mb-2">
+              <a href={lecture.redirect} target="_blank" rel="noopener noreferrer" class="hover:underline">
+                {lecture.title.toLowerCase()}
+              </a>
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">{lecture.description}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   </div>
 </BaseLayout>

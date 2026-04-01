@@ -1,6 +1,15 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 
+const talks = [
+  {
+    title: "Kipoi Seminar",
+    description: "Invited talk, March 2026 (InstaDeep).",
+    seriesUrl: "https://kipoi.org/seminar/",
+    recordingUrl: "https://www.youtube.com/watch?v=edqZqLfqcBM",
+  },
+];
+
 const lectures = [
   {
     title: "Finite Kakeya Conjecture",
@@ -22,11 +31,35 @@ const lectures = [
     <div class="space-y-2">
       <h1 class="text-4xl font-bold">teaching</h1>
       <p class="text-sm">
-        Lectures and (maybe in the future) courses that I have (co-)taught.
+        Lectures I have (co-)taught, plus occasional seminar talks.
       </p>
     </div>
 
-    <div class="space-y-8">
+    <div class="space-y-8 pt-8 divider-rule-t">
+      <h2 class="text-2xl font-bold">talks</h2>
+      {talks.map((talk) => (
+        <article class="pb-8 border-b-2 border-black dark:border-white last:border-0">
+          <h3 class="text-xl font-bold lowercase mb-2">
+            <a href={talk.recordingUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
+              {talk.title.toLowerCase()}
+            </a>
+          </h3>
+          <p class="text-sm">
+            {talk.description}{' '}
+            <a href={talk.seriesUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
+              Series page
+            </a>
+            {' · '}
+            <a href={talk.recordingUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
+              Recording
+            </a>
+          </p>
+        </article>
+      ))}
+    </div>
+
+    <div class="space-y-8 pt-8 divider-rule-t">
+      <h2 class="text-2xl font-bold">lectures</h2>
       {lectures.map((lecture) => (
         <article class="pb-8 border-b-2 border-black dark:border-white last:border-0">
           <h2 class="text-xl font-bold lowercase mb-2">

@@ -1,18 +1,53 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 
-const talks = [
+const talks: {
+  title: string;
+  description: string;
+  links: { label: string; href: string }[];
+}[] = [
   {
     title: "Kipoi Seminar",
     description: "Invited talk, March 2026 (InstaDeep).",
-    seriesUrl: "https://kipoi.org/seminar/",
-    recordingUrl: "https://www.youtube.com/watch?v=edqZqLfqcBM",
+    links: [
+      { label: "Series page", href: "https://kipoi.org/seminar/" },
+      { label: "Recording", href: "https://www.youtube.com/watch?v=edqZqLfqcBM" },
+    ],
   },
   {
     title: "Are Genomic Language Models All You Need?",
     description: "Exploring genomic language models on protein downstream tasks. AAAI/ICLR workshop.",
-    seriesUrl: "https://drive.google.com/file/d/1qgwnesu448IZVvPVcoWpwVoqLVroY8Uk/view?usp=sharing",
-    recordingUrl: "https://drive.google.com/file/d/1qgwnesu448IZVvPVcoWpwVoqLVroY8Uk/view?usp=sharing",
+    links: [
+      {
+        label: "Slides",
+        href: "https://drive.google.com/file/d/1qgwnesu448IZVvPVcoWpwVoqLVroY8Uk/view?usp=sharing",
+      },
+    ],
+  },
+  {
+    title: "LLMs, Personas, and Trust Games",
+    description:
+      "6.S893 multi-agent LLM project presentation (MIT). Persona-driven agents in repeated trust games with agent–agent communication.",
+    links: [
+      {
+        label: "Slides",
+        href: "https://drive.google.com/file/d/1Zm4HZkSIXejTpmA-2wi-Hj82xA1hb6hR/view?usp=sharing",
+      },
+      {
+        label: "Paper",
+        href: "https://drive.google.com/file/d/1Vmc_deL-iDIUNpbV0lKw_JO20ZJOfXiA/view?usp=sharing",
+      },
+    ],
+  },
+  {
+    title: "Quantum Cryptography and Quantum Key Distribution: The BB84 Protocol",
+    description: "Overview of quantum key distribution and the BB84 protocol.",
+    links: [
+      {
+        label: "Slides",
+        href: "https://docs.google.com/presentation/d/1Xa1g6zumS3vggdBvvY5zfeJ7xoMN2qeL5elulT2BglI/edit?usp=sharing",
+      },
+    ],
   },
 ];
 
@@ -23,12 +58,6 @@ const lectures = [
       "Introductory Lecture on Polynomial Method solution to the Finite Kakeya conjecture as part of 18.204 @ MIT",
     redirect: "https://drive.google.com/file/d/1QCKVmmhYZoHKx0iuogY6KC1ELKU9wApP/view?usp=sharing",
     importance: 1,
-  },
-  {
-    title: "Quantum Cryptography and Quantum Key Distribution: The BB84 Protocol",
-    description: "Overview of quantum key distribution and the BB84 protocol.",
-    redirect: "https://docs.google.com/presentation/d/1Xa1g6zumS3vggdBvvY5zfeJ7xoMN2qeL5elulT2BglI/edit?usp=sharing",
-    importance: 2,
   },
   {
     title: "Towards Foundational Genomic Modeling: From DNA Sequence to Multi-Omic Systems",
@@ -74,35 +103,38 @@ const entryArticleClass =
         talks
       </h2>
       <div>
-        {talks.map((talk) => (
+        {talks.map((talk) => {
+          const primary = talk.links[0];
+          return (
           <article class={entryArticleClass}>
             <h3 class="text-xl font-bold lowercase mb-2">
-              <a href={talk.recordingUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
-                {talk.title.toLowerCase()}
-              </a>
+              {primary ? (
+                <a href={primary.href} target="_blank" rel="noopener noreferrer" class="hover:underline">
+                  {talk.title.toLowerCase()}
+                </a>
+              ) : (
+                <span>{talk.title.toLowerCase()}</span>
+              )}
             </h3>
             <p class="text-sm text-gray-600 dark:text-gray-400">
               {talk.description}{' '}
-              <a
-                href={talk.seriesUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="hover:underline text-gray-700 dark:text-gray-300"
-              >
-                Series page
-              </a>
-              {' · '}
-              <a
-                href={talk.recordingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="hover:underline text-gray-700 dark:text-gray-300"
-              >
-                Recording
-              </a>
+              {talk.links.map((link, i) => (
+                <span>
+                  {i > 0 && ' · '}
+                  <a
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="hover:underline text-gray-700 dark:text-gray-300"
+                  >
+                    {link.label}
+                  </a>
+                </span>
+              ))}
             </p>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
 

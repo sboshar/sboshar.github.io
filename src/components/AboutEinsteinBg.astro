@@ -36,20 +36,20 @@
     height: 100%;
     display: block;
     pointer-events: none;
-    opacity: 0.3;
+    opacity: 0.24;
     /* One GPU filter pass over the bitmap — replaces heavy canvas shadowBlur per tile. */
     /* Light mode: halo matches body text (#1a1a1a) */
     filter: blur(0.45px)
-      drop-shadow(0 0 10px rgba(26, 26, 26, 0.09))
-      drop-shadow(0 0 24px rgba(26, 26, 26, 0.05));
+      drop-shadow(0 0 10px rgba(26, 26, 26, 0.075))
+      drop-shadow(0 0 24px rgba(26, 26, 26, 0.04));
     transform: translateZ(0);
   }
 
   :global(.dark) .einstein-hat-bg-root canvas {
-    opacity: 0.28;
+    opacity: 0.22;
     filter: blur(0.4px)
-      drop-shadow(0 0 10px rgba(200, 215, 255, 0.17))
-      drop-shadow(0 0 22px rgba(200, 215, 255, 0.08));
+      drop-shadow(0 0 10px rgba(200, 215, 255, 0.13))
+      drop-shadow(0 0 22px rgba(200, 215, 255, 0.065));
   }
 
   @media (prefers-reduced-motion: reduce) {

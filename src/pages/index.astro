@@ -5,6 +5,17 @@ import { siteHref } from '../lib/site-url';
 
 const selectedPublications = papers.filter(pub => pub.selected === true);
 
+const selectedProjects = [
+  {
+    title: 'MànDào',
+    subtitleZh: '漫道',
+    href: 'https://mandao-sigma.vercel.app/',
+    description:
+      'Mandarin learning app built on a meaning-centered graph: words in context, recursive exploration, spaced repetition.',
+    github: 'https://github.com/sboshar/mandao',
+  },
+];
+
 /** Absolute homepage URL for SEO / structured data */
 const websiteUrl = Astro.site
   ? new URL(import.meta.env.BASE_URL, Astro.site).href
@@ -96,6 +107,33 @@ const personJsonLd = JSON.stringify({
           See all publications →
         </a>
       </p>
+    </div>
+
+    <div class="space-y-6 pt-8 divider-rule-t">
+      <h2 class="text-2xl font-bold">Selected Projects</h2>
+      <ul class="space-y-6">
+        {selectedProjects.map((proj) => (
+          <li class="pb-6 divider-rule-b last:border-0">
+            <h3 class="text-lg font-medium">
+              <a href={proj.href} class="hover:underline" target="_blank" rel="noopener noreferrer">
+                {proj.title}
+              </a>
+              <span class="font-normal text-gray-600 dark:text-gray-400"> ({proj.subtitleZh})</span>
+            </h3>
+            <p class="text-sm text-gray-700 dark:text-gray-300 mt-1 leading-relaxed">{proj.description}</p>
+            <p class="text-sm mt-2">
+              <a
+                href={proj.github}
+                class="text-gray-600 dark:text-gray-400 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub →
+              </a>
+            </p>
+          </li>
+        ))}
+      </ul>
     </div>
 
     <!-- Social Links -->

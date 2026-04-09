@@ -1,7 +1,7 @@
 ---
 import { siteHref, normalizePathname } from '../lib/site-url';
 
-const navItems = ['about', 'publications', 'teaching', 'cv'].map((segment) => ({
+const navItems = ['about', 'publications', 'teaching', 'projects', 'cv'].map((segment) => ({
   label: segment === 'about' ? 'about' : segment,
   href: segment === 'about' ? siteHref() : siteHref(segment),
 }));

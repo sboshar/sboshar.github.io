@@ -1,0 +1,102 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const projects = [
+  {
+    title: "Mandao (漫道)",
+    description: "Learn Mandarin through sentences — a web app for sentence-based Mandarin learning",
+    year: "2025",
+    link: "https://mandao-sigma.vercel.app/",
+    github: "https://github.com/sboshar/mandao",
+  },
+  {
+    title: "LLMs, Personas, and Trust Games",
+    description: "6.S893 multi-agent LLM project presentation (MIT). Persona-driven agents in repeated trust games with agent–agent communication",
+    year: "2023",
+    link: "https://drive.google.com/file/d/1Vmc_deL-iDIUNpbV0lKw_JO20ZJOfXiA/view?usp=sharing",
+    slides: "https://drive.google.com/file/d/1Zm4HZkSIXejTpmA-2wi-Hj82xA1hb6hR/view?usp=sharing",
+  },
+  {
+    title: "Graph Nets for Image and Language",
+    description: "MIT Deep Learning (G) final project with Amir Kazeminia",
+    year: "2023",
+    link: "https://drive.google.com/file/d/1e3ntIld2ICm2-906IRZ5_TkWH3-5fivL/view?usp=sharing",
+  },
+  {
+    title: "Gridworld Visualizer",
+    description: "Gridworld visualizer for reinforcement learning algorithms",
+    year: "2021",
+    link: "#",
+  },
+  {
+    title: "Vegan Argument Landscape",
+    description: "Exploring the landscape of arguments, objections, and responses surrounding an argument for veganism",
+    year: "2021",
+    link: "https://prezi.com/p/mqhr4ga0ifjq/?present=1",
+  },
+];
+
+function groupByYear(list: typeof projects) {
+  const order: string[] = [];
+  const byYear = new Map<string, typeof projects>();
+  for (const p of list) {
+    if (!byYear.has(p.year)) {
+      order.push(p.year);
+      byYear.set(p.year, []);
+    }
+    byYear.get(p.year)!.push(p);
+  }
+  return order.map((year) => ({ year, items: byYear.get(year)! }));
+}
+
+const groups = groupByYear(projects);
+---
+
+<BaseLayout title="Projects">
+  <div class="space-y-12">
+    <h1 class="text-4xl font-bold">projects</h1>
+
+    <div class="space-y-6">
+      {groups.map((group) => (
+        <div class="flex items-start gap-4 pb-6 divider-rule-b last:border-0">
+          <div class="flex-1 min-w-0 space-y-6">
+            {group.items.map((project) => (
+              <article class="space-y-1">
+                <h2 class="text-lg font-medium">
+                  <a href={project.link} class="hover:underline" target="_blank" rel="noopener noreferrer">
+                    {project.title}
+                  </a>
+                  {project.github && (
+                    <a href={project.github} class="text-sm text-gray-500 dark:text-gray-400 hover:underline ml-2" target="_blank" rel="noopener noreferrer">
+                      [github]
+                    </a>
+                  )}
+                  {project.lecture && (
+                    <a href={project.lecture} class="text-sm text-gray-500 dark:text-gray-400 hover:underline ml-2" target="_blank" rel="noopener noreferrer">
+                      [lecture]
+                    </a>
+                  )}
+                  {project.slides && (
+                    <a href={project.slides} class="text-sm text-gray-500 dark:text-gray-400 hover:underline ml-2" target="_blank" rel="noopener noreferrer">
+                      [slides]
+                    </a>
+                  )}
+                </h2>
+                <p class="text-sm text-gray-700 dark:text-gray-300">
+                  {project.description}
+                </p>
+              </article>
+            ))}
+          </div>
+          <div class="text-4xl font-light text-gray-300 dark:text-gray-600 tabular-nums shrink-0 pt-1">
+            {group.year}
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <footer class="pt-12 text-sm text-gray-600 dark:text-gray-400">
+      © Copyright 2026 Sam Boshar.
+    </footer>
+  </div>
+</BaseLayout>

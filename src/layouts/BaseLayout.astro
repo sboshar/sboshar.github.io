@@ -70,8 +70,12 @@ const ogImageUrl =
     <TofuLogo />
     <Navigation />
     <ThemeToggle />
-    {einsteinBg && <AboutEinsteinBg />}
-    {einsteinBg && <EinsteinBgInfo />}
+    {einsteinBg && (
+      <div class="einstein-bg-stack">
+        <AboutEinsteinBg />
+        <EinsteinBgInfo />
+      </div>
+    )}
     <main class:list={['max-w-4xl mx-auto px-6 py-24', { 'relative z-10': einsteinBg }]}>
       <slot />
     </main>

@@ -37,3 +37,29 @@ body {
     border-bottom: var(--divider-stroke) solid var(--color-divider);
   }
 }
+
+/**
+ * When “Shape-shifting hats” is expanded, blur and fade the wireframe so the info panel reads clearly.
+ * Relies on `.einstein-bg-stack` wrapping `AboutEinsteinBg` + `EinsteinBgInfo` in BaseLayout.
+ */
+.einstein-bg-stack:has(details.einstein-bg-info[open]) .einstein-hat-bg-root canvas {
+  opacity: 0.07;
+  filter: blur(14px)
+    drop-shadow(0 0 12px rgba(26, 26, 26, 0.04))
+    drop-shadow(0 0 28px rgba(26, 26, 26, 0.025));
+}
+
+.dark .einstein-bg-stack:has(details.einstein-bg-info[open]) .einstein-hat-bg-root canvas {
+  opacity: 0.06;
+  filter: blur(12px)
+    drop-shadow(0 0 12px rgba(200, 215, 255, 0.05))
+    drop-shadow(0 0 26px rgba(200, 215, 255, 0.03));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .einstein-bg-stack:has(details.einstein-bg-info[open]) .einstein-hat-bg-root canvas,
+  .dark .einstein-bg-stack:has(details.einstein-bg-info[open]) .einstein-hat-bg-root canvas {
+    filter: none;
+    opacity: 0.05;
+  }
+}

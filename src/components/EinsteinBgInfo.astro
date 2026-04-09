@@ -9,7 +9,7 @@
   <summary class="einstein-bg-info-summary">
     Shape-shifting hats
   </summary>
-  <div class="einstein-bg-info-panel mt-2 space-y-2 divider-rule-t pt-2">
+  <div class="einstein-bg-info-panel mt-2 space-y-2 divider-rule-t">
     <p>
       The backdrop is a wireframe view of the <strong>H7/H8 hat continuum</strong>—a family of
       aperiodic monotiles (the “Einstein hat” story) that morph between two shapes while still
@@ -61,6 +61,13 @@
     font-size: 0.75rem;
     line-height: 1.5;
     color: var(--color-text-muted);
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    margin-left: -0.125rem;
+    margin-right: -0.125rem;
+    background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
 
   .einstein-bg-info-panel strong {

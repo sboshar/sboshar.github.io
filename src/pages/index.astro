@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { papers, formatAuthors } from '../data/publications';
 import { siteHref } from '../lib/site-url';
 
-const selectedPublications = papers.filter(pub => pub.selected === true);
+const selectedPublications = papers.filter((pub) => pub.selected === true).slice(0, 1);
 
 const selectedProjects = [
   {

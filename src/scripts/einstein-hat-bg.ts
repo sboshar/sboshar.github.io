@@ -359,8 +359,8 @@ export function hatOutlineFromShapeParam(w: number): { x: number; y: number }[] 
 
 /* ---------- Canvas: wireframe (glow = CSS filter on canvas — avoids per-path shadowBlur) ---------- */
 
-const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.16)';
-const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.16)';
+const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.28)';
+const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.28)';
 /** Matches `global.css` `:root --color-text` (#1a1a1a) for light-mode pulse strokes. */
 const TEXT_RGB_LIGHT = '26, 26, 26';
 const EDGE_LINE_WIDTH_LIGHT = 0.7;
@@ -802,15 +802,6 @@ export function initEinsteinHatBg(canvasId: string) {
 
     drawFrame(v, aa, bb, curMom);
 
-    const lightingOn = !reducedEffects && !touchPrimary;
-    if (lightingOn) {
-      // Keep emitting waves even when the cursor is stationary
-      if (pointerValid) trySpawnWaveAt(pointerX, pointerY, timeMs);
-
-      drawLineWaves(v, aa, bb, curMom, timeMs);
-      drawCursorLineGlow(v, aa, bb, curMom);
-    }
-
     animId = requestAnimationFrame(tick);
   }
 
@@ -880,7 +871,6 @@ export function initEinsteinHatBg(canvasId: string) {
   touchMq.addEventListener('change', syncInputMode);
 
   resizeCanvas();
-  window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
   animId = requestAnimationFrame(tick);
   window.addEventListener('resize', scheduleResizeCanvas, { passive: true });
   window.addEventListener('orientationchange', scheduleResizeCanvas, { passive: true });
@@ -893,6 +883,5 @@ export function initEinsteinHatBg(canvasId: string) {
     touchMq.removeEventListener('change', syncInputMode);
     window.removeEventListener('resize', scheduleResizeCanvas);
     window.removeEventListener('orientationchange', scheduleResizeCanvas);
-    window.removeEventListener('pointermove', onGlobalPointerMove);
   };
 }

@@ -1,0 +1,309 @@
+---
+/**
+ * Interactive pastel-LEGO physics sandbox at the bottom of content pages.
+ * A matter.js engine runs headless; each DOM brick (keeping its CSS look —
+ * studs, shine, gradient) is synced to a rigid body, so bricks fall, collide,
+ * stack and topple, and can be grabbed and thrown. Purely playful (aria-hidden).
+ *
+ * Progressive enhancement: with JS (or the CDN) unavailable, the area is empty.
+ */
+---
+
+<!-- matter.js (global `Matter`); is:inline so it loads as-is before our module runs. -->
+<script
+  is:inline
+  src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"></script>
+
+<div class="lego-sandbox" aria-hidden="true">
+  <div class="lego-play"></div>
+</div>
+
+<style is:global>
+  .lego-sandbox {
+    padding: 3rem 1rem 2.5rem;
+    user-select: none;
+  }
+  .lego-play {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    height: 340px;
+    margin: 0 auto;
+    overflow: hidden;
+    pointer-events: none;
+    touch-action: auto;
+    cursor: default;
+  }
+  /* Bricks are positioned purely via `transform` (synced to the physics body). */
+  .lego-play .lego {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 24px;
+    border-radius: 0;
+    background-color: var(--brick);
+    border: 0;
+    filter: drop-shadow(4px 5px 0 color-mix(in srgb, var(--brick) 48%, #70515a));
+    will-change: transform;
+    transition: filter 0.16s ease;
+  }
+  .lego-play .lego.dragging {
+    filter: drop-shadow(6px 8px 0 color-mix(in srgb, var(--brick) 42%, #70515a));
+  }
+  /* Brief flash when a brick clicks into place. */
+  .lego-play .lego.clicked {
+    filter: drop-shadow(2px 3px 0 color-mix(in srgb, var(--brick) 48%, #70515a));
+    transition: filter 0.05s ease;
+  }
+  /* Glossy shine bar near the top. */
+  .lego-play .lego::after {
+    content: none;
+  }
+  /* Fixed-size studs (one per stud-cell). */
+  .lego-play .lego::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: -9px;
+    height: 11px;
+    background-image: linear-gradient(90deg, transparent 0 22%, var(--brick) 22% 78%, transparent 78%);
+    background-size: 26px 100%;
+    background-position: center bottom;
+    background-repeat: space no-repeat;
+  }
+</style>
+
+<script>
+  const CELL = 26; // stud-cell width (px) — matches the stud background-size in CSS
+  const ROW = 24; // brick height (px)
+
+  function initLegoPhysics() {
+    const Matter = (window as any).Matter;
+    const play = document.querySelector<HTMLElement>('.lego-play');
+    if (!play) return;
+    if (!Matter) {
+      // CDN not ready yet — retry shortly.
+      window.setTimeout(initLegoPhysics, 120);
+      return;
+    }
+
+    const { Engine, Runner, Bodies, Composite, Mouse, MouseConstraint, Events, Body, Query } = Matter;
+
+    const W = play.clientWidth;
+    const H = play.clientHeight;
+    const MAX_COLS = Math.max(1, Math.floor(W / CELL));
+
+    const PASTELS = [
+      'rgb(216, 166, 186)', // muted pink
+      'rgb(184, 171, 211)', // muted lilac
+      'rgb(167, 188, 211)', // muted periwinkle
+      'rgb(217, 175, 148)', // muted peach
+      'rgb(175, 203, 187)', // muted mint
+    ];
+    /** [studsWide, bricksTall, colorIndex] */
+    const TOWERS: [number, number, number][] = [
+      [2, 2, 0],
+      [3, 4, 1],
+      [2, 3, 3],
+      [3, 5, 2],
+      [2, 2, 4],
+      [2, 4, 1],
+      [3, 3, 0],
+    ];
+
+    const engine = Engine.create();
+    engine.gravity.y = 1;
+    const world = engine.world;
+
+    // Static boundaries: ground, left and right walls (keep bricks in the box).
+    const T = 200; // wall thickness (well off-screen)
+    const wallOpts = { isStatic: true, render: { visible: false } };
+    Composite.add(world, [
+      Bodies.rectangle(W / 2, H + T / 2, W + 2 * T, T, wallOpts), // ground
+      Bodies.rectangle(-T / 2, H / 2, T, H * 3, wallOpts), // left
+      Bodies.rectangle(W + T / 2, H / 2, T, H * 3, wallOpts), // right
+    ]);
+
+    type Brick = {
+      el: HTMLElement;
+      body: any;
+      w: number; // width in studs
+      wPx: number;
+      locked: boolean;
+      col: number;
+      row: number;
+    };
+    const bricks: Brick[] = [];
+
+    /** Pixel center for a grid slot. */
+    const slotX = (col: number, wPx: number) => col * CELL + wPx / 2;
+    const slotY = (row: number) => H - row * ROW - ROW / 2;
+
+    /** Highest resting row for a w-wide brick at `col`, considering only locked bricks. */
+    function restingRow(col: number, w: number, exclude: Brick) {
+      let row = 0;
+      for (const o of bricks) {
+        if (o === exclude || !o.locked) continue;
+        if (col < o.col + o.w && col + w > o.col) row = Math.max(row, o.row + 1);
+      }
+      return row;
+    }
+
+    /** Snap a brick into the grid and lock it ("click"). */
+    function clickIntoPlace(b: Brick, col: number) {
+      col = Math.max(0, Math.min(col, MAX_COLS - b.w));
+      const row = restingRow(col, b.w, b);
+      b.col = col;
+      b.row = row;
+      b.locked = true;
+      Body.setAngle(b.body, 0);
+      Body.setAngularVelocity(b.body, 0);
+      Body.setVelocity(b.body, { x: 0, y: 0 });
+      Body.setPosition(b.body, { x: slotX(col, b.wPx), y: slotY(row) });
+      Body.setStatic(b.body, true);
+      b.el.classList.add('clicked');
+      window.setTimeout(() => b.el.classList.remove('clicked'), 110);
+    }
+
+    function makeBrick(wStuds: number, col: number, row: number, color: string) {
+      const wPx = wStuds * CELL;
+      const el = document.createElement('span');
+      el.className = 'lego';
+      el.style.setProperty('--brick', color);
+      el.style.width = `${wPx}px`;
+      play!.appendChild(el);
+
+      const body = Bodies.rectangle(slotX(col, wPx), slotY(row), wPx, ROW, {
+        friction: 0.7,
+        frictionStatic: 1,
+        restitution: 0.04,
+        chamfer: { radius: 2 },
+        isStatic: true,
+      });
+      Composite.add(world, body);
+      bricks.push({ el, body, w: wStuds, wPx, locked: true, col, row });
+    }
+
+    // Build the initial skyline, already clicked together.
+    let cursor = 1; // start one stud in from the left
+    for (const [w, h, c] of TOWERS) {
+      for (let r = 0; r < h; r++) makeBrick(w, cursor, r, PASTELS[c]);
+      cursor += w + 1; // one stud gap between towers
+    }
+
+    // Sync DOM bricks to their bodies each frame.
+    Events.on(engine, 'afterUpdate', () => {
+      for (const b of bricks) {
+        const { x, y } = b.body.position;
+        b.el.style.transform =
+          `translate(${x - b.wPx / 2}px, ${y - ROW / 2}px) rotate(${b.body.angle}rad)`;
+      }
+    });
+
+    /** Normalize an angle to [-π, π]. */
+    function norm(a: number) {
+      a = a % (2 * Math.PI);
+      if (a > Math.PI) a -= 2 * Math.PI;
+      if (a < -Math.PI) a += 2 * Math.PI;
+      return a;
+    }
+
+    // --- Custom pointer drag (no MouseConstraint, so static "clicked" bricks
+    // are still grabbable). While dragging, the brick is kinematic (static +
+    // moved to follow the pointer) so it shoves loose bricks around; on release
+    // it either clicks into the grid or is flung with the throw velocity. ---
+    let drag: Brick | null = null;
+    let grabX = 0; // pointer offset from body center
+    let grabY = 0;
+    let lastX = 0; // for throw velocity
+    let lastY = 0;
+    let velX = 0;
+    let velY = 0;
+
+    function localPoint(e: PointerEvent) {
+      const rect = play!.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    play.addEventListener('pointerdown', (e: PointerEvent) => {
+      const pt = localPoint(e);
+      const hit = Query.point(bricks.map((b) => b.body), pt)[0];
+      if (!hit) return;
+      const b = bricks.find((br) => br.body === hit);
+      if (!b) return;
+      e.preventDefault();
+      drag = b;
+      b.locked = false;
+      Body.setStatic(b.body, true); // kinematic while dragging
+      Body.setAngle(b.body, 0);
+      grabX = pt.x - b.body.position.x;
+      grabY = pt.y - b.body.position.y;
+      lastX = b.body.position.x;
+      lastY = b.body.position.y;
+      velX = velY = 0;
+      b.el.classList.add('dragging');
+      play!.setPointerCapture(e.pointerId);
+    });
+
+    window.addEventListener('pointermove', (e: PointerEvent) => {
+      if (!drag) return;
+      const pt = localPoint(e);
+      const wPx = drag.wPx;
+      let x = pt.x - grabX;
+      let y = pt.y - grabY;
+      x = Math.max(wPx / 2, Math.min(x, W - wPx / 2));
+      y = Math.max(ROW / 2, Math.min(y, H - ROW / 2));
+      velX = x - lastX;
+      velY = y - lastY;
+      lastX = x;
+      lastY = y;
+      Body.setPosition(drag.body, { x, y });
+    });
+
+    function release() {
+      if (!drag) return;
+      const b = drag;
+      drag = null;
+      b.el.classList.remove('dragging');
+
+      // Click into place if dropped close to a grid slot; otherwise fling it
+      // with the throw velocity and let gravity take over.
+      const clamped = Math.max(0, Math.min(Math.round((b.body.position.x - b.wPx / 2) / CELL), MAX_COLS - b.w));
+      const targetY = slotY(restingRow(clamped, b.w, b));
+      const nearX = Math.abs(b.body.position.x - slotX(clamped, b.wPx)) < CELL * 0.95;
+      const nearY = Math.abs(b.body.position.y - targetY) < ROW * 1.4;
+      if (nearX && nearY) {
+        clickIntoPlace(b, clamped);
+      } else {
+        Body.setStatic(b.body, false);
+        Body.setVelocity(b.body, { x: velX, y: velY });
+      }
+    }
+
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+
+    // A loose (fallen/flung) brick that comes to rest upright near a slot clicks in.
+    Events.on(engine, 'afterUpdate', () => {
+      for (const b of bricks) {
+        if (b.locked || b === drag) continue;
+        const speed = Math.hypot(b.body.velocity.x, b.body.velocity.y);
+        if (speed > 0.4 || Math.abs(b.body.angularVelocity) > 0.03) continue;
+        if (Math.abs(norm(b.body.angle)) >= 0.18) continue;
+        const col = Math.max(0, Math.min(Math.round((b.body.position.x - b.wPx / 2) / CELL), MAX_COLS - b.w));
+        if (Math.abs(b.body.position.y - slotY(restingRow(col, b.w, b))) < ROW * 0.7) {
+          clickIntoPlace(b, col);
+        }
+      }
+    });
+
+    const runner = Runner.create();
+    Runner.run(runner, engine);
+  }
+
+  if (document.readyState !== 'loading') initLegoPhysics();
+  else document.addEventListener('DOMContentLoaded', initLegoPhysics);
+</script>

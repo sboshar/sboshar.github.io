@@ -3,22 +3,34 @@
 @tailwind utilities;
 
 :root {
-  --global-bg-color: #F5F3ED;
-  --color-bg: #F5F3ED;
-  --color-text: #1a1a1a;
-  --color-text-muted: #666666;
-  --color-border: #e5e5e5;
+  /** Muted clay-paper light mode: warm, playful, and easy on the eyes. */
+  --global-bg-color: #D9CDC3;
+  --color-bg: #D9CDC3;
+  --color-text: #352E2D;
+  --color-text-muted: #796B67;
+  --color-border: #C5B5AA;
+  --color-accent: #C9677E; /* dusty raspberry */
+  --color-accent-soft: #D5AEB7;
+  --color-accent-2: #CF8B68; /* muted apricot */
+  --color-accent-3: #A85F79; /* plum rose */
+  --panel-surface: #E2D7CE;
   --color-divider: color-mix(in srgb, var(--color-text-muted) 22%, transparent);
   /** Section rules; slightly heavier than the hat wireframe for readability. */
   --divider-stroke: 1.5px;
 }
 
 .dark {
-  --global-bg-color: #1C1C1D;
-  --color-bg: #1C1C1D;
-  --color-text: #ffffff;
-  --color-text-muted: #999999;
-  --color-border: #333333;
+  /** Deep aubergine dark mode with richer, clear accents. */
+  --global-bg-color: #15101A;
+  --color-bg: #15101A;
+  --color-text: #F3EBF0;
+  --color-text-muted: #B6A5B1;
+  --color-border: #403146;
+  --color-accent: #CE7890; /* muted rose */
+  --color-accent-soft: #422638;
+  --color-accent-2: #C89170; /* muted apricot */
+  --color-accent-3: #9F84B8; /* muted orchid */
+  --panel-surface: #302333;
   --color-divider: color-mix(in srgb, var(--color-text) 18%, transparent);
   --divider-stroke: 1.5px;
 }
@@ -26,7 +38,274 @@
 body {
   background-color: var(--global-bg-color);
   color: var(--color-text);
+  overflow-x: hidden;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.site-main {
+  animation: page-arrive 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.has-einstein-bg .site-main {
+  animation: none;
+  perspective: 1000px;
+}
+
+body.has-einstein-bg .hero-intro {
+  animation: hero-reveal 600ms 780ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.has-einstein-bg .playful-card {
+  transform-origin: center top;
+  backface-visibility: hidden;
+  animation: panel-flip-in 820ms cubic-bezier(0.2, 0.85, 0.25, 1.08) both;
+}
+
+body.has-einstein-bg .playful-card:nth-of-type(2) { animation-delay: 1.05s; }
+body.has-einstein-bg .playful-card:nth-of-type(3) { animation-delay: 1.28s; }
+body.has-einstein-bg .playful-card:nth-of-type(4) { animation-delay: 1.51s; }
+
+main h1 {
+  width: fit-content;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.playful-title {
+  position: relative;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  text-shadow: none;
+}
+
+.playful-title span { color: var(--color-accent); }
+
+.role-line {
+  width: fit-content;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--color-accent-2);
+  color: var(--color-text-muted);
+}
+
+.role-line a {
+  color: var(--color-text);
+  font-weight: 650;
+}
+
+.playful-card {
+  padding: 1.55rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transition: filter 180ms ease;
+}
+
+.dark .playful-card {
+  background: transparent;
+}
+
+.playful-card:hover {
+  filter: none;
+}
+
+/** Homepage tile-panel registration marks, like numbered research samples. */
+.home-stack {
+  counter-reset: cut-panel;
+}
+
+.home-stack > .playful-card {
+  counter-increment: cut-panel;
+  position: relative;
+  isolation: isolate;
+  padding-top: 2.2rem;
+}
+
+.home-stack > .playful-card::before {
+  content: "0" counter(cut-panel);
+  position: absolute;
+  top: 0;
+  right: 2.8rem;
+  min-width: 2.35rem;
+  padding: 0.22rem 0.38rem 0.28rem;
+  color: var(--color-text);
+  background: var(--color-accent-soft);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-align: center;
+}
+
+.home-stack > .playful-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 1.9rem;
+  width: 0.48rem;
+  height: 0.48rem;
+  background: var(--color-accent-2);
+  box-shadow: 0.68rem 0.68rem 0 var(--color-accent-3);
+}
+
+.social-tray {
+  width: fit-content;
+  padding-right: 1rem;
+}
+
+/**
+ * Soft halo (in the page background color) around text sitting over the
+ * colorful tiling — keeps glyphs legible without a panel that would cover the
+ * tiles. Inherits to all descendant text; reset on the LEGO badges.
+ */
+.text-halo {
+  text-shadow:
+    0 0 4px var(--global-bg-color),
+    0 0 8px var(--global-bg-color),
+    0 0 12px var(--global-bg-color);
+}
+.text-halo .text-xs.font-semibold.border {
+  text-shadow: none;
+}
+
+/**
+ * Give content links the pastel accent. Tailwind color utilities (e.g. the
+ * `text-black dark:text-white` on the social icons) win on specificity, so
+ * those stay put — only plain, un-colored links pick up the accent.
+ */
+a {
+  color: var(--color-accent);
+}
+
+/** Restrained link treatment. */
+a:not([aria-label]):not([class*="text-gray"]) {
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-underline-offset: 0.16em;
+  transition: color 0.18s ease, text-decoration-color 0.18s ease;
+}
+a:not([aria-label]):not([class*="text-gray"]):hover {
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+}
+
+/** Small accent reserved for section hierarchy. */
+h2.text-2xl {
+  color: var(--color-accent);
+}
+h2.text-2xl::after {
+  content: none;
+}
+
+/** Bouncy social icons. */
+a[aria-label] i {
+  display: inline-block;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease;
+}
+a[aria-label]:hover i {
+  transform: translateY(-1px);
+  color: var(--color-accent);
+}
+
+/**
+ * Publication abbreviation badge as a clean, flat LEGO block (no outline, no
+ * fake 3D extrusion). It reads as one piece: a solid colored body, a row of
+ * same-color tabs poking up from the top edge (::before), and a soft white
+ * shine bar (::after). Tabs use `background-repeat: space` so they stay whole
+ * and evenly spaced regardless of label width.
+ */
+.text-xs.font-semibold.border {
+  --brick: rgb(216, 166, 186); /* default: muted pink (overridden per-badge in the markup) */
+  --brick-text: #3a2e2a;
+  position: relative;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--brick-text) !important;
+  padding-top: 0.4em !important;
+  padding-bottom: 0.4em !important;
+  background-color: var(--brick);
+  filter: drop-shadow(3px 4px 0 color-mix(in srgb, var(--brick) 48%, #70515a));
+  margin-top: 0.8em;
+  transition: none;
+}
+/* Same-color tabs (studs) poking up from the top edge, each with a faint shine. */
+.text-xs.font-semibold.border::before {
+  content: "";
+  position: absolute;
+  left: 0.55em;
+  right: 0.55em;
+  top: -0.5em;
+  height: 0.62em;
+  /* Fixed stud size for every badge; `space` repeats only whole studs and
+   * spreads the slack into even gaps, so wider labels simply get more studs. */
+  background-image: linear-gradient(90deg, transparent 0 22%, var(--brick) 22% 78%, transparent 78%);
+  background-size: 1.2em 100%;
+  background-position: center bottom;
+  background-repeat: space no-repeat;
+}
+/* Glossy shine bar near the top of the block. */
+.text-xs.font-semibold.border::after {
+  content: none;
+}
+.text-xs.font-semibold.border:hover {
+  transform: none;
+}
+
+::selection {
+  background-color: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a, a[aria-label] i, .text-xs.font-semibold.border {
+    transition: none;
+  }
+}
+
+@keyframes page-arrive {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes hero-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panel-flip-in {
+  from {
+    opacity: 0;
+    transform: rotateX(-82deg) translateY(-18px) scale(0.97);
+  }
+  70% {
+    opacity: 1;
+    transform: rotateX(5deg) translateY(1px) scale(1);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .site-main {
+    padding-top: 6.5rem;
+    padding-bottom: 7rem;
+  }
+
+  .playful-card {
+    padding: 1.25rem;
+    border-radius: 0;
+  }
+
+  .page-confetti { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-main { animation: none; }
+  .playful-card { transition: none; }
+  body.has-einstein-bg .hero-intro,
+  body.has-einstein-bg .playful-card {
+    animation: none;
+  }
 }
 
 @layer utilities {

@@ -5,8 +5,10 @@ export default {
   theme: {
     extend: {
       colors: {
-        'bg-light': '#F5F3ED',
-        'bg-dark': '#252525',
+        'bg-light': '#D9CDC3',
+        'bg-dark': '#15101A',
+        accent: 'var(--color-accent)',
+        'accent-soft': 'var(--color-accent-soft)',
         divider: 'var(--color-divider)',
       },
     },

@@ -359,12 +359,31 @@ export function hatOutlineFromShapeParam(w: number): { x: number; y: number }[] 
 
 /* ---------- Canvas: wireframe (glow = CSS filter on canvas — avoids per-path shadowBlur) ---------- */
 
-const EDGE_STROKE_LIGHT = 'rgba(45, 48, 58, 0.22)';
-const EDGE_STROKE_DARK = 'rgba(210, 214, 225, 0.22)';
+/** Bold, dark tile outlines — the heavy borders of a hexagon-tiling look. */
+const EDGE_STROKE_LIGHT = 'rgba(48, 42, 56, 0.85)';
+const EDGE_STROKE_DARK = 'rgba(24, 20, 30, 0.85)';
+
+/**
+ * Three-color hexagon-tiling palette (rose / lilac / periwinkle). Each tile
+ * picks one (see `tileColorIdx`) so adjacent tiles alternate colors.
+ */
+const TILE_FILLS_LIGHT = [
+  'rgb(255, 184, 214)', // bright pink
+  'rgb(201, 181, 255)', // bright lilac
+  'rgb(176, 214, 255)', // bright sky blue
+];
+const TILE_FILLS_DARK = [
+  'rgb(255, 178, 210)', // bright pink
+  'rgb(196, 176, 255)', // bright lilac
+  'rgb(170, 210, 255)', // bright sky blue
+];
+/** Per-tile fill opacity — opaque like the reference hexagon tiling. */
+const TILE_FILL_ALPHA_LIGHT = 1;
+const TILE_FILL_ALPHA_DARK = 1;
 /** Matches `global.css` `:root --color-text` (#1a1a1a) for light-mode pulse strokes. */
 const TEXT_RGB_LIGHT = '26, 26, 26';
-const EDGE_LINE_WIDTH_LIGHT = 0.7;
-const EDGE_LINE_WIDTH_DARK = 0.65;
+const EDGE_LINE_WIDTH_LIGHT = 2.2;
+const EDGE_LINE_WIDTH_DARK = 2.2;
 
 /** Line waves propagate both ways along tile perimeter when you touch a wire. */
 const LINE_HIT_PX = 15;
@@ -406,13 +425,16 @@ export function initEinsteinHatBg(canvasId: string) {
   // Re-bind after null guard so closures capture non-nullable types.
   const canvas = el;
   const ctx = ctx0;
+  const panelCanvas = document.getElementById(`${canvasId}-panels`) as HTMLCanvasElement | null;
+  const panelCtx = panelCanvas?.getContext('2d') ?? null;
 
   const SUBST_STEPS = 4;
-  /** Higher = larger tiles on screen (scale is fixed from classic-hat bbox, not current morph). */
-  const TILE_ZOOM = 8;
+  /** Higher = larger tiles on screen + deeper into the patch interior so it fully covers the viewport. */
+  const TILE_ZOOM = 11;
   /** Extra zoom on touch-primary viewports so the tiling reads better on small screens. */
   const TILE_ZOOM_MOBILE_FACTOR = 1.28;
-  const SHAPE_CYCLE_MS = 52000;
+  /** One full H7/H8 morph. */
+  const SHAPE_CYCLE_MS = 32000;
 
   let root: HatMeta;
   try {
@@ -423,10 +445,66 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   const flatShapes = flattenShapes(root);
+  const cutPanels = Array.from(
+    document.querySelectorAll<HTMLElement>('.home-stack > .hero-intro, .home-stack > .playful-card')
+  );
 
   const aaRef = SHAPE_ALPHA * HAT_CLASSIC_SHAPE_V;
   const bbRef = SHAPE_ALPHA * (1 - HAT_CLASSIC_SHAPE_V);
   const refMoments = computePatchMoments(flatShapes, aaRef, bbRef, null);
+
+  /**
+   * 3-coloring of the tiles using the canonical hexagonal scheme. We overlay a
+   * virtual hex lattice on the (fixed, reference-shape) tile centroids, snap each
+   * centroid to its hex cell (cube rounding), and color it by `((q - r) mod 3)`.
+   *
+   * That is the standard proper 3-coloring of a hex grid: same-colored cells lie
+   * on a triangular sublattice, so the cells reached along the three lattice
+   * directions 120° apart share a color — the pattern from the reference image.
+   */
+  const tileColorIdx = (() => {
+    // Reference (classic-hat) centroids — fixed so colors don't change as tiles morph.
+    const centroids = flatShapes.map((sh) => {
+      let sx = 0, sy = 0;
+      for (const p of sh.pts) {
+        const o = evalSym(p, aaRef, bbRef);
+        sx += o.x;
+        sy += o.y;
+      }
+      return { x: sx / sh.pts.length, y: sy / sh.pts.length };
+    });
+
+    // Lattice pitch ≈ median nearest-neighbor spacing, so adjacent tiles land in
+    // adjacent hex cells (one color step apart) and the coloring reads cleanly.
+    const nnDists: number[] = [];
+    for (let i = 0; i < centroids.length; i++) {
+      let best = Infinity;
+      for (let j = 0; j < centroids.length; j++) {
+        if (i === j) continue;
+        const d = Math.hypot(centroids[i].x - centroids[j].x, centroids[i].y - centroids[j].y);
+        if (d < best) best = d;
+      }
+      if (Number.isFinite(best)) nnDists.push(best);
+    }
+    nnDists.sort((a, b) => a - b);
+    const L = (nnDists[Math.floor(nnDists.length / 2)] || 1) * 0.8;
+
+    return centroids.map(({ x, y }) => {
+      // Pixel → fractional axial (pointy-top), then cube-round to integer hex coords.
+      const fq = (Math.sqrt(3) / 3 * x - 1 / 3 * y) / L;
+      const fr = (2 / 3 * y) / L;
+      const fs = -fq - fr;
+      let rq = Math.round(fq);
+      let rr = Math.round(fr);
+      const rs = Math.round(fs);
+      const dq = Math.abs(rq - fq);
+      const dr = Math.abs(rr - fr);
+      const ds = Math.abs(rs - fs);
+      if (dq > dr && dq > ds) rq = -rr - rs;
+      else if (dr > ds) rr = -rq - rs;
+      return (((rq - rr) % 3) + 3) % 3;
+    });
+  })();
 
   let animId = 0;
   /** Pulses / cursor glow off when prefers-reduced-motion or touch-primary (no lighting on phones). */
@@ -748,6 +826,13 @@ export function initEinsteinHatBg(canvasId: string) {
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (panelCanvas && panelCtx) {
+      panelCanvas.width = Math.floor(w * dpr);
+      panelCanvas.height = Math.floor(h * dpr);
+      panelCanvas.style.width = `${w}px`;
+      panelCanvas.style.height = `${h}px`;
+      panelCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
   }
 
   /** Debounce: visualViewport/resize storms during mobile gestures would realloc the canvas every frame → flicker. */
@@ -764,14 +849,16 @@ export function initEinsteinHatBg(canvasId: string) {
     const dark = isDark();
     const stroke = dark ? EDGE_STROKE_DARK : EDGE_STROKE_LIGHT;
     const lw = dark ? EDGE_LINE_WIDTH_DARK : EDGE_LINE_WIDTH_LIGHT;
+    const fills = dark ? TILE_FILLS_DARK : TILE_FILLS_LIGHT;
+    const fillAlpha = dark ? TILE_FILL_ALPHA_DARK : TILE_FILL_ALPHA_LIGHT;
 
     ctx.clearRect(0, 0, v.w, v.h);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = stroke;
     ctx.lineWidth = lw;
 
-    for (const sh of flatShapes) {
+    for (let si = 0; si < flatShapes.length; si++) {
+      const sh = flatShapes[si]!;
       ctx.beginPath();
       for (let i = 0; i < sh.pts.length; i++) {
         const o = evalSym(sh.pts[i], aa, bb);
@@ -781,8 +868,75 @@ export function initEinsteinHatBg(canvasId: string) {
         else ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
+
+      ctx.globalAlpha = fillAlpha;
+      ctx.fillStyle = fills[tileColorIdx[si]!]!;
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = stroke;
       ctx.stroke();
     }
+  }
+
+  /**
+   * Recolor whole live tiles behind each content section. The panel boundary is
+   * therefore the union of real hat outlines, so every edge follows the H7/H8
+   * morph without clipping or approximating the DOM element.
+   */
+  function drawTilePanels(v: View, aa: number, bb: number, curMom: PatchMoments) {
+    if (!panelCtx || !panelCanvas || cutPanels.length === 0) return;
+    panelCtx.clearRect(0, 0, v.w, v.h);
+    panelCtx.lineJoin = 'round';
+    panelCtx.lineWidth = 2.5;
+    const panelFill = getComputedStyle(document.documentElement)
+      .getPropertyValue('--panel-surface')
+      .trim() || (isDark() ? '#302333' : '#E2D7CE');
+
+    for (const panel of cutPanels) {
+      const isHero = panel.classList.contains('hero-intro');
+      const heroTitle = isHero ? panel.querySelector<HTMLElement>('h1') : null;
+      const rect = heroTitle?.getBoundingClientRect() ?? panel.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > v.h) continue;
+      const panelOpacity = Number.parseFloat(getComputedStyle(panel).opacity || '1');
+      if (panelOpacity < 0.01) continue;
+
+      // Select every tile whose polygon intersects the content bounds. Unlike
+      // centroid selection, this guarantees the title remains covered while
+      // tile proportions change through the morph.
+      const padX = isHero ? 3 : 18;
+      const padY = isHero ? 3 : 14;
+      panelCtx.globalAlpha = panelOpacity;
+      panelCtx.fillStyle = panelFill;
+      panelCtx.strokeStyle = panelFill;
+
+      for (const sh of flatShapes) {
+        const pts = shapeVerticesScreen(sh, v, aa, bb, curMom);
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const p of pts) {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        }
+        if (
+          maxX < rect.left - padX || minX > rect.right + padX ||
+          maxY < rect.top - padY || minY > rect.bottom + padY
+        ) continue;
+
+        panelCtx.beginPath();
+        panelCtx.moveTo(pts[0]!.x, pts[0]!.y);
+        for (let i = 1; i < pts.length; i++) panelCtx.lineTo(pts[i]!.x, pts[i]!.y);
+        panelCtx.closePath();
+        panelCtx.fill();
+        // Same-color overlap removes hairline gaps between adjacent tiles.
+        panelCtx.stroke();
+      }
+    }
+    panelCtx.globalAlpha = 1;
   }
 
   function tick(timeMs: number) {
@@ -801,6 +955,7 @@ export function initEinsteinHatBg(canvasId: string) {
     lastCurMom = curMom;
 
     drawFrame(v, aa, bb, curMom);
+    drawTilePanels(v, aa, bb, curMom);
 
     animId = requestAnimationFrame(tick);
   }

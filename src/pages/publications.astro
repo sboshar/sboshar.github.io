@@ -18,6 +18,23 @@ function groupPapersByYear(list: Publication[]): { year: string; items: Publicat
 }
 
 const paperYearGroups = groupPapersByYear(papers);
+
+/**
+ * Pastel LEGO colors matching the site's background tiling, cycled in document
+ * order. Stud size is fixed in CSS, so pieces differ by color and by how many
+ * (same-size) studs fit the label — just like real bricks of different lengths.
+ */
+const BRICK_COLORS = [
+  { bg: 'rgb(216, 166, 186)', text: '#3a2e2a' }, // muted pink
+  { bg: 'rgb(184, 171, 211)', text: '#3a2e2a' }, // muted lilac
+  { bg: 'rgb(167, 188, 211)', text: '#3a2e2a' }, // muted periwinkle
+  { bg: 'rgb(217, 175, 148)', text: '#3a2e2a' }, // muted peach
+];
+const brickStyle = new Map<Publication, string>();
+[...papers, ...workshops].forEach((p, i) => {
+  const c = BRICK_COLORS[i % BRICK_COLORS.length];
+  brickStyle.set(p, `--brick: ${c.bg}; --brick-text: ${c.text}`);
+});
 ---
 
 <BaseLayout title="Publications">
@@ -35,7 +52,7 @@ const paperYearGroups = groupPapersByYear(papers);
                 const authorInfo = formatAuthors(pub.authors);
                 return (
                   <article class="flex items-start gap-4">
-                    <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1 shrink-0">
+                    <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1 shrink-0" style={brickStyle.get(pub)}>
                       {pub.abbr}
                     </span>
                     <div class="flex-1 min-w-0 space-y-1">
@@ -82,7 +99,7 @@ const paperYearGroups = groupPapersByYear(papers);
           const authorInfo = formatAuthors(pub.authors);
           return (
             <article class="flex items-start gap-4 pb-6 divider-rule-b last:border-0">
-              <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1">
+              <span class="text-xs font-semibold border border-black dark:border-white px-2 py-1 rounded whitespace-nowrap mt-1" style={brickStyle.get(pub)}>
                 {pub.abbr}
               </span>
               <div class="flex-1 space-y-1">

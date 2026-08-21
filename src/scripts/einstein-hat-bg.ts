@@ -884,8 +884,60 @@ export function initEinsteinHatBg(canvasId: string) {
    * therefore the union of real hat outlines, so every edge follows the H7/H8
    * morph without clipping or approximating the DOM element.
    */
-  function drawTilePanels(v: View, aa: number, bb: number, curMom: PatchMoments) {
+  type TextBounds = { left: number; top: number; right: number; bottom: number };
+  const panelTextBounds = new Map<HTMLElement, TextBounds>();
+  let lastPanelBoundsSyncMs = -Infinity;
+  let panelBoundsViewportWidth = 0;
+
+  function syncPanelTextBounds(timeMs: number) {
+    if (timeMs - lastPanelBoundsSyncMs < 240 && panelBoundsViewportWidth === window.innerWidth) return;
+    lastPanelBoundsSyncMs = timeMs;
+    panelBoundsViewportWidth = window.innerWidth;
+    panelTextBounds.clear();
+
+    for (const panel of cutPanels) {
+      const isHero = panel.classList.contains('hero-intro');
+      const root = isHero ? panel.querySelector<HTMLElement>('h1') : panel;
+      if (!root) continue;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        if (!node.textContent?.trim()) continue;
+        range.selectNodeContents(node);
+        for (const rect of Array.from(range.getClientRects())) {
+          if (rect.width < 0.5 || rect.height < 0.5) continue;
+          left = Math.min(left, rect.left);
+          top = Math.min(top, rect.top);
+          right = Math.max(right, rect.right);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+      }
+      range.detach();
+      if (Number.isFinite(left)) {
+        panelTextBounds.set(panel, {
+          left: left + window.scrollX,
+          top: top + window.scrollY,
+          right: right + window.scrollX,
+          bottom: bottom + window.scrollY,
+        });
+      }
+    }
+  }
+
+  function drawTilePanels(
+    v: View,
+    aa: number,
+    bb: number,
+    curMom: PatchMoments,
+    timeMs: number
+  ) {
     if (!panelCtx || !panelCanvas || cutPanels.length === 0) return;
+    syncPanelTextBounds(timeMs);
     panelCtx.clearRect(0, 0, v.w, v.h);
     panelCtx.lineJoin = 'round';
     panelCtx.lineWidth = 2.5;
@@ -895,8 +947,16 @@ export function initEinsteinHatBg(canvasId: string) {
 
     for (const panel of cutPanels) {
       const isHero = panel.classList.contains('hero-intro');
-      const heroTitle = isHero ? panel.querySelector<HTMLElement>('h1') : null;
-      const rect = heroTitle?.getBoundingClientRect() ?? panel.getBoundingClientRect();
+      const stored = panelTextBounds.get(panel);
+      const fallback = panel.getBoundingClientRect();
+      const rect = stored
+        ? {
+            left: stored.left - window.scrollX,
+            top: stored.top - window.scrollY,
+            right: stored.right - window.scrollX,
+            bottom: stored.bottom - window.scrollY,
+          }
+        : fallback;
       if (rect.bottom < 0 || rect.top > v.h) continue;
       const panelOpacity = Number.parseFloat(getComputedStyle(panel).opacity || '1');
       if (panelOpacity < 0.01) continue;
@@ -904,8 +964,8 @@ export function initEinsteinHatBg(canvasId: string) {
       // Select every tile whose polygon intersects the content bounds. Unlike
       // centroid selection, this guarantees the title remains covered while
       // tile proportions change through the morph.
-      const padX = isHero ? 3 : 18;
-      const padY = isHero ? 3 : 14;
+      const padX = isHero ? 3 : 6;
+      const padY = isHero ? 3 : 6;
       panelCtx.globalAlpha = panelOpacity;
       panelCtx.fillStyle = panelFill;
       panelCtx.strokeStyle = panelFill;
@@ -955,7 +1015,7 @@ export function initEinsteinHatBg(canvasId: string) {
     lastCurMom = curMom;
 
     drawFrame(v, aa, bb, curMom);
-    drawTilePanels(v, aa, bb, curMom);
+    drawTilePanels(v, aa, bb, curMom, timeMs);
 
     animId = requestAnimationFrame(tick);
   }

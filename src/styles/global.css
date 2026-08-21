@@ -108,43 +108,9 @@ main h1 {
   filter: none;
 }
 
-/** Homepage tile-panel registration marks, like numbered research samples. */
-.home-stack {
-  counter-reset: cut-panel;
-}
-
 .home-stack > .playful-card {
-  counter-increment: cut-panel;
   position: relative;
   isolation: isolate;
-  padding-top: 2.2rem;
-}
-
-.home-stack > .playful-card::before {
-  content: "0" counter(cut-panel);
-  position: absolute;
-  top: 0;
-  right: 2.8rem;
-  min-width: 2.35rem;
-  padding: 0.22rem 0.38rem 0.28rem;
-  color: var(--color-text);
-  background: var(--color-accent-soft);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  line-height: 1;
-  text-align: center;
-}
-
-.home-stack > .playful-card::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 1.9rem;
-  width: 0.48rem;
-  height: 0.48rem;
-  background: var(--color-accent-2);
-  box-shadow: 0.68rem 0.68rem 0 var(--color-accent-3);
 }
 
 .social-tray {

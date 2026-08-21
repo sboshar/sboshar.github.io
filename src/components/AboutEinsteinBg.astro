@@ -44,12 +44,12 @@
     height: 100%;
     display: block;
     pointer-events: none;
-    opacity: 0.14;
+    opacity: 0.16;
     /* Crisp hexagon-tiling look — no blur. */
     filter: none;
     transform: translateZ(0);
-    transition: opacity 0.4s ease, filter 0.4s ease;
-    animation: tiles-settle-light 2.2s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: filter 0.4s ease;
+    animation: tiles-settle 2.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .einstein-panel-canvas {
@@ -64,19 +64,13 @@
   }
 
   :global(.dark) .einstein-hat-bg-root canvas {
-    opacity: 0.18;
+    opacity: 0.16;
     filter: none;
-    animation: tiles-settle-dark 2.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  @keyframes tiles-settle-light {
+  @keyframes tiles-settle {
     0%, 42% { opacity: 0.42; }
-    100% { opacity: 0.14; }
-  }
-
-  @keyframes tiles-settle-dark {
-    0%, 42% { opacity: 0.42; }
-    100% { opacity: 0.18; }
+    100% { opacity: 0.16; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -84,7 +78,7 @@
     :global(.dark) .einstein-hat-bg-root canvas,
     .einstein-panel-canvas {
       filter: none;
-      transition: opacity 0.25s ease;
+      transition: none;
       animation: none;
     }
   }

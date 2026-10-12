@@ -253,7 +253,8 @@ a[aria-label]:hover i {
 
 @media (max-width: 720px) {
   .site-main {
-    padding-top: 6.5rem;
+    /* Clear the logo and the mobile-only shape strip before the title begins. */
+    padding-top: 9rem;
     padding-right: 1rem;
     padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
     padding-left: 1rem;

@@ -511,6 +511,8 @@ export function initEinsteinHatBg(canvasId: string) {
   /** Pulses / cursor glow off when prefers-reduced-motion or touch-primary (no lighting on phones). */
   let reducedEffects = false;
   let touchPrimary = false;
+  const compactMq = window.matchMedia('(max-width: 720px)');
+  let compactViewport = compactMq.matches;
   /** Logical canvas coords; updated from window pointermove. */
   let pointerValid = false;
   let pointerX = 0;
@@ -556,7 +558,7 @@ export function initEinsteinHatBg(canvasId: string) {
     const h = viewportCssH > 0 ? viewportCssH : window.innerHeight;
     const pad = 1.08;
     const baseS = (Math.min(w, h) / stableSpan) * pad * 0.92;
-    const zoom = TILE_ZOOM * (touchPrimary ? TILE_ZOOM_MOBILE_FACTOR : 1);
+    const zoom = TILE_ZOOM * (compactViewport ? TILE_ZOOM_MOBILE_FACTOR : 1);
     const s = baseS * zoom;
     return {
       w,
@@ -843,6 +845,7 @@ export function initEinsteinHatBg(canvasId: string) {
     resizeDebounceId = window.setTimeout(() => {
       resizeDebounceId = 0;
       resizeCanvas();
+      if (compactViewport && animId === 0) animId = requestAnimationFrame(tick);
     }, 120);
   }
 
@@ -1001,6 +1004,7 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function tick(timeMs: number) {
+    animId = 0;
     /* Two full canvases plus polygon hit-testing are costly on mobile Safari.
      * The morph is intentionally slow, so 30 fps remains visually smooth. */
     if (touchPrimary && timeMs - lastRenderMs < 1000 / 30) {
@@ -1009,7 +1013,11 @@ export function initEinsteinHatBg(canvasId: string) {
     }
     lastRenderMs = timeMs;
 
-    const wSlider = 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
+    /* Mobile uses one stable classic-hat frame. This avoids Safari canvas flicker
+     * and leaves the animated continuum as the richer desktop treatment. */
+    const wSlider = compactViewport
+      ? HAT_CLASSIC_SHAPE_V
+      : 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
     const wClamped = Math.min(0.99, Math.max(0.01, wSlider));
     const aa = SHAPE_ALPHA * wClamped;
     const bb = SHAPE_ALPHA * (1 - wClamped);
@@ -1026,7 +1034,7 @@ export function initEinsteinHatBg(canvasId: string) {
     drawFrame(v, aa, bb, curMom);
     drawTilePanels(v, aa, bb, curMom, timeMs);
 
-    animId = requestAnimationFrame(tick);
+    if (!compactViewport) animId = requestAnimationFrame(tick);
   }
 
   /** Spawn a wave at (x, y) in logical canvas coords if a wire is close enough and cooldown elapsed. */
@@ -1082,17 +1090,23 @@ export function initEinsteinHatBg(canvasId: string) {
   const motionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
   const touchMq = window.matchMedia('(hover: none) and (pointer: coarse)');
   const syncInputMode = () => {
+    const wasCompact = compactViewport;
     reducedEffects = motionMq.matches;
+    compactViewport = compactMq.matches;
     const nextTouch = touchMq.matches;
     if (nextTouch && !touchPrimary) {
       lineWaves.length = 0;
       shapeLastSpawnMs.clear();
     }
     touchPrimary = nextTouch;
+    if (wasCompact && !compactViewport && animId === 0) {
+      animId = requestAnimationFrame(tick);
+    }
   };
   syncInputMode();
   motionMq.addEventListener('change', syncInputMode);
   touchMq.addEventListener('change', syncInputMode);
+  compactMq.addEventListener('change', syncInputMode);
 
   resizeCanvas();
   animId = requestAnimationFrame(tick);
@@ -1105,6 +1119,7 @@ export function initEinsteinHatBg(canvasId: string) {
     window.clearTimeout(resizeDebounceId);
     motionMq.removeEventListener('change', syncInputMode);
     touchMq.removeEventListener('change', syncInputMode);
+    compactMq.removeEventListener('change', syncInputMode);
     window.removeEventListener('resize', scheduleResizeCanvas);
     window.removeEventListener('orientationchange', scheduleResizeCanvas);
   };

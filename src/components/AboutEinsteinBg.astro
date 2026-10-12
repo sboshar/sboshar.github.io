@@ -84,18 +84,27 @@
   }
 
   @media (max-width: 720px) {
+    .einstein-hat-bg-root {
+      /* On phones the tiling is a quiet header ornament, not a scrolling backdrop. */
+      position: absolute;
+      inset: 0 0 auto;
+      height: 8.5rem;
+      overflow: hidden;
+    }
+
     .einstein-hat-bg-root canvas {
-      /* The background should support the copy, not compete with it on a small screen. */
-      opacity: 0.12;
+      opacity: 0.16;
+      animation: none;
+      transition: none;
     }
 
     :global(.dark) .einstein-hat-bg-root canvas {
-      opacity: 0.13;
+      opacity: 0.16;
     }
 
-    @keyframes tiles-settle {
-      0%, 42% { opacity: 0.25; }
-      100% { opacity: 0.12; }
+    .einstein-panel-canvas {
+      /* Tile-sized text panels pop as the geometry morphs; omit them on mobile. */
+      display: none;
     }
   }
 </style>

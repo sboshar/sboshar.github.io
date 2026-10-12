@@ -68,7 +68,7 @@ const homePath = normalizePathname(siteHref());
     .site-nav {
       top: auto;
       right: 50%;
-      bottom: 0.75rem;
+      bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
       transform: translateX(50%);
       width: max-content;
       max-width: calc(100vw - 1rem);

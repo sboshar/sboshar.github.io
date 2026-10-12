@@ -82,4 +82,20 @@
       animation: none;
     }
   }
+
+  @media (max-width: 720px) {
+    .einstein-hat-bg-root canvas {
+      /* The background should support the copy, not compete with it on a small screen. */
+      opacity: 0.12;
+    }
+
+    :global(.dark) .einstein-hat-bg-root canvas {
+      opacity: 0.13;
+    }
+
+    @keyframes tiles-settle {
+      0%, 42% { opacity: 0.25; }
+      100% { opacity: 0.12; }
+    }
+  }
 </style>

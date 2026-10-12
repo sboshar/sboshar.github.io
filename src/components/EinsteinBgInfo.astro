@@ -78,4 +78,16 @@
   .einstein-bg-info-panel a {
     color: var(--color-text-muted);
   }
+
+  @media (max-width: 720px) {
+    details.einstein-bg-info {
+      /* Keep the disclosure clear of the fixed mobile navigation. */
+      bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+      left: 1rem;
+    }
+
+    .einstein-bg-info-summary {
+      font-size: 0.625rem;
+    }
+  }
 </style>

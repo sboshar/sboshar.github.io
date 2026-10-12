@@ -431,8 +431,8 @@ export function initEinsteinHatBg(canvasId: string) {
   const SUBST_STEPS = 4;
   /** Higher = larger tiles on screen + deeper into the patch interior so it fully covers the viewport. */
   const TILE_ZOOM = 11;
-  /** Extra zoom on touch-primary viewports so the tiling reads better on small screens. */
-  const TILE_ZOOM_MOBILE_FACTOR = 1.28;
+  /** Slightly smaller tiles expose more of the pattern in a narrow portrait viewport. */
+  const TILE_ZOOM_MOBILE_FACTOR = 0.9;
   /** One full H7/H8 morph. */
   const SHAPE_CYCLE_MS = 32000;
 
@@ -507,6 +507,7 @@ export function initEinsteinHatBg(canvasId: string) {
   })();
 
   let animId = 0;
+  let lastRenderMs = -Infinity;
   /** Pulses / cursor glow off when prefers-reduced-motion or touch-primary (no lighting on phones). */
   let reducedEffects = false;
   let touchPrimary = false;
@@ -1000,6 +1001,14 @@ export function initEinsteinHatBg(canvasId: string) {
   }
 
   function tick(timeMs: number) {
+    /* Two full canvases plus polygon hit-testing are costly on mobile Safari.
+     * The morph is intentionally slow, so 30 fps remains visually smooth. */
+    if (touchPrimary && timeMs - lastRenderMs < 1000 / 30) {
+      animId = requestAnimationFrame(tick);
+      return;
+    }
+    lastRenderMs = timeMs;
+
     const wSlider = 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);
     const wClamped = Math.min(0.99, Math.max(0.01, wSlider));
     const aa = SHAPE_ALPHA * wClamped;

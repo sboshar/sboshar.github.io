@@ -254,12 +254,25 @@ a[aria-label]:hover i {
 @media (max-width: 720px) {
   .site-main {
     padding-top: 6.5rem;
-    padding-bottom: 7rem;
+    padding-right: 1rem;
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+    padding-left: 1rem;
   }
 
   .playful-card {
-    padding: 1.25rem;
+    /* Do not double-inset the copy inside the already padded page column. */
+    padding: 1rem 0;
     border-radius: 0;
+  }
+
+  .playful-title {
+    font-size: clamp(2.5rem, 12vw, 2.85rem);
+  }
+
+  .role-line {
+    padding-left: 0.7rem;
+    font-size: 1rem;
+    line-height: 1.5;
   }
 
   .page-confetti { display: none; }

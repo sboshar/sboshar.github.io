@@ -1013,8 +1013,8 @@ export function initEinsteinHatBg(canvasId: string) {
     }
     lastRenderMs = timeMs;
 
-    /* Mobile uses one stable classic-hat frame. This avoids Safari canvas flicker
-     * and leaves the animated continuum as the richer desktop treatment. */
+    /* Mobile uses one stable, full-viewport classic-hat frame. CSS reveals only
+     * its header band, preserving the original scale without Safari flicker. */
     const wSlider = compactViewport
       ? HAT_CLASSIC_SHAPE_V
       : 0.5 + 0.5 * Math.sin((timeMs / SHAPE_CYCLE_MS) * 2 * PI);

@@ -85,21 +85,37 @@
 
   @media (max-width: 720px) {
     .einstein-hat-bg-root {
-      /* On phones the tiling is a quiet header ornament, not a scrolling backdrop. */
+      /* A full-height drawing surface preserves the original tile scale. Making
+       * it document-positioned keeps iOS Safari's fixed compositor out of the
+       * scrolling path, eliminating flashes as its browser chrome resizes. */
       position: absolute;
       inset: 0 0 auto;
-      height: 8.5rem;
+      height: 100svh;
       overflow: hidden;
     }
 
     .einstein-hat-bg-root canvas {
-      opacity: 0.16;
+      /* Keep the full viewport as the drawing surface so mobile hats retain the
+       * same scale as the original design. Only the top is revealed. */
+      opacity: 0.14;
       animation: none;
       transition: none;
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        #000 0,
+        #000 6.25rem,
+        transparent 9rem
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        #000 0,
+        #000 6.25rem,
+        transparent 9rem
+      );
     }
 
     :global(.dark) .einstein-hat-bg-root canvas {
-      opacity: 0.16;
+      opacity: 0.15;
     }
 
     .einstein-panel-canvas {

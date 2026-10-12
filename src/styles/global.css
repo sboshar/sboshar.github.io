@@ -253,7 +253,7 @@ a[aria-label]:hover i {
 
 @media (max-width: 720px) {
   .site-main {
-    /* Clear the logo and the mobile-only shape strip before the title begins. */
+    /* Clear the logo and let the decorative shape band fade before the title. */
     padding-top: 9rem;
     padding-right: 1rem;
     padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));

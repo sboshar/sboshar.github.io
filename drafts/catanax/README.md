@@ -11,4 +11,5 @@ not publish them.
 | [03-optimal-compute.md](03-optimal-compute.md) | bullet outline: K/R/D rollout scaling, Pareto front, optimal allocation |
 | [04-other-post-ideas.md](04-other-post-ideas.md) | titles + one-line ideas for the remaining posts |
 | [viz/catan-to-kernel.html](viz/catan-to-kernel.html) | interactive Distill-style draft: board → row, one move in the kernel, longest road, the A100, the warp race |
+| [kernel-improvement-ideas.md](kernel-improvement-ideas.md) | notes from reading the engine kernel: latency diagnosis + six improvement ideas |
 | [figures/](figures/) | plots from `catanax/experiments/krd_rollout_sweep` + a surface-fit script |

@@ -1,5 +1,7 @@
 # Making Catan fast: vmap's lockstep tax and the kernels that remove it
 
+<!-- Interactive draft of the figures: viz/catan-to-kernel.html (open locally or serve the folder). -->
+
 <!-- Bullet outline. Fill in prose later. Numbers: A100-40GB unless noted. [CHECK] = verify before publishing. -->
 
 ## Main idea of the post
@@ -39,6 +41,21 @@
 - failed idea: a closed-form parity/odd-degree formula ("provably over-counts")
 - red herring: profiling blamed `_component_walk` for "61%", but removing it changed nothing (XLA overlapped it). Lesson: re-measure.
 - memory: a (54,3,16) tensor took ~340 MB at batch 131k → cumsum slot map (6.66M → 7.05M steps/s)
+
+## Focused section: longest road (could be its own post)
+- the rule: 2 VP for the longest edge-simple trail ≥ 5; can't pass through an opponent's building
+- why it's hard
+  - longest trail is a search over trails; its cost depends on network shape (a line is trivial, a tangle with branches explodes)
+  - NP-hard on general graphs; tiny here (≤ 15 roads, degree ≤ 3), but the per-board variance is what kills vmap
+- catanatron semantics reproduced on purpose: never step *into* an enemy node; the cut award skips the ≥5 check; ties favor seat 0
+- the history, in order
+  - ran 3× per step (once per switch branch) → classify once before dispatch (NONE / INITIAL / BUILD / SYNC / CUT): 2.8×
+  - incremental: a new road only extends trails through itself → search from that edge; phased two-arm expansion
+  - failed: a closed-form degree-parity formula ("provably over-counts")
+  - per-game Pallas kernel (below): 9.5–12×
+  - inside the v2 engine kernel: used-set indexed by edge id in 31-bit limbs (no prefix sum or popcount in Triton)
+  - future: seed only from nodes with degree ≠ 2 (exact; fewer duplicates; lower stack occupancy); add a stack-overflow flag
+- interactive: viz figures 3 (straggler race) and 4 (DFS stack)
 
 ## Act 2: the longest-road kernel: clever bits
 - `grid=(B,)`: one program per game, so each DFS retires independently

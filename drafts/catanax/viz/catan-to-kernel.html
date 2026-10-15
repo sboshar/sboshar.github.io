@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catan on a GPU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #ffffff;
+  --ink: #2a2f3d;
+  --ink-2: #555c70;
+  --muted: #8b91a5;
+  --rule: #e3e6ee;
+  --soft: #f5f6fa;
+  --soft-2: #eceff6;
+  --accent: #6f9fd8;
+  --accent-soft: #e4eefa;
+  --violet: #a58fd6;
+  --hot: #e47c93;
+  --ok: #5fb894;
+  --blue: #6c9be0;
+  --orange: #f2a65e;
+  --wood: #a9d3a0;
+  --brick: #f1b39b;
+  --sheep: #d6edb3;
+  --wheat: #f6e09d;
+  --ore: #c8ccd9;
+  --desert: #efe3c6;
+  --sea: #e4f0f8;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); }
+body { font: 18px/1.65 "Source Serif 4", Georgia, serif; -webkit-font-smoothing: antialiased; }
+.sans, h1, h2, h3, nav, .controls, figcaption, .byline, .kv, .stat, .legend { font-family: Inter, system-ui, sans-serif; }
+.mono, code { font-family: "JetBrains Mono", ui-monospace, monospace; }
+code { font-size: 0.82em; background: var(--soft); padding: 1px 5px; border-radius: 4px; color: #4b5a86; }
+
+.title { max-width: 980px; margin: 0 auto; padding: 64px 24px 18px; }
+.title h1 { font-size: 46px; line-height: 1.12; margin: 0 0 12px; font-weight: 700; letter-spacing: -0.01em; }
+.title p.sub { font-size: 21px; color: var(--ink-2); margin: 0; max-width: 760px; }
+.byline { max-width: 980px; margin: 0 auto; padding: 14px 24px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: flex; gap: 48px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.byline b { display: block; color: var(--ink); font-weight: 600; font-size: 14px; }
+
+.l-text { max-width: 700px; margin: 0 auto; padding: 0 24px; }
+.l-text h2 { font-size: 26px; margin: 56px 0 8px; font-weight: 700; }
+.l-text h2 .num { color: var(--muted); font-weight: 500; margin-right: 8px; }
+.l-text p { margin: 0 0 18px; }
+.l-text .aside { font-size: 15px; color: var(--ink-2); border-left: 3px solid var(--accent-soft); padding-left: 14px; }
+
+figure.l-wide { max-width: 1180px; margin: 28px auto 36px; padding: 0 24px; }
+figure.l-wide > .frame { border: 1px solid var(--rule); border-radius: 14px; padding: 16px; background: var(--paper); box-shadow: 0 1px 2px #0000000a, 0 8px 28px #2a2f3d0a; }
+figcaption { max-width: 820px; margin: 12px auto 0; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+figcaption b { color: var(--ink); }
+
+.split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 18px; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.panel { min-width: 0; }
+.panel h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.controls button, .toggle button {
+  background: var(--paper); color: var(--ink); border: 1px solid var(--rule); padding: 6px 13px;
+  border-radius: 999px; cursor: pointer; font: 500 13px Inter, sans-serif;
+}
+.controls button:hover, .toggle button:hover { border-color: var(--accent); color: #3f6fa8; }
+.controls .step-label { color: var(--muted); font-size: 13px; margin-left: 6px; }
+.toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; }
+.toggle button { border: 0; border-radius: 0; }
+.toggle button.on { background: var(--accent-soft); color: #3f6fa8; }
+
+svg { display: block; width: 100%; height: auto; }
+.board-svg { max-height: 600px; }
+.tile-hex { stroke: #fff; stroke-width: 3; transition: filter .2s; }
+.tile-hex.hl { filter: brightness(1.04) saturate(1.5) drop-shadow(0 0 4px #6f9fd888); }
+.node-dot { fill: #fff; stroke: #a5acc2; stroke-width: 1.2; cursor: pointer; }
+.node-dot.hl { stroke: #3f6fa8; stroke-width: 2.5; fill: #dbe9fb; }
+.edge-line { stroke: #ffffff; stroke-width: 3; cursor: pointer; stroke-linecap: round; opacity: .9; }
+.edge-line.hit { stroke: transparent; stroke-width: 12; }
+.edge-line.hl { stroke: #3f6fa8 !important; stroke-width: 5; opacity: 1; }
+.road { stroke-width: 6.5; stroke-linecap: round; pointer-events: none; }
+.label-id { font: 500 8px "JetBrains Mono", monospace; fill: #8b91a5; pointer-events: none; }
+.token { fill: #fffdf6; stroke: #d7cfb8; stroke-width: 1; }
+.token-text { font: 600 11px Inter, sans-serif; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.row-grid rect.cell { stroke: #fff; stroke-width: 1.2; transition: opacity .15s; }
+.row-grid rect.cell.dim { opacity: .16; }
+.row-grid rect.cell.flash { stroke: var(--ink); stroke-width: 2; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); margin-top: 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.inspector, .log { font-family: "JetBrains Mono", monospace; font-size: 12px; background: var(--soft); border-radius: 10px; padding: 10px 12px; line-height: 1.6; }
+.inspector { margin-top: 10px; min-height: 96px; white-space: pre-wrap; color: var(--ink-2); }
+.inspector .k { color: var(--muted); }
+.inspector .v { color: #2f8a66; font-weight: 600; }
+.inspector .a { color: #3f6fa8; font-weight: 600; }
+.log { height: 160px; overflow: auto; }
+.log div { opacity: .4; }
+.log div.cur { opacity: 1; color: #2f7a5c; }
+.fam { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 6px; font-family: Inter, sans-serif; }
+.fam div { border: 1px solid var(--rule); border-radius: 9px; padding: 6px 9px; font-size: 12.5px; background: var(--paper); transition: all .25s; }
+.fam div small { display: block; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 10.5px; }
+.fam div.waste { background: repeating-linear-gradient(45deg, #f6f1fb, #f6f1fb 6px, #efe7f8 6px, #efe7f8 12px); color: #9a88bd; border-color: #e2d8f2; }
+.fam div.live { border-color: var(--ok); background: #e3f5ec; color: #2f7a5c; box-shadow: 0 0 0 3px #5fb89422; }
+.stat { display: inline-block; margin-right: 18px; font-size: 13px; color: var(--muted); }
+.stat b { color: var(--ink); font-family: "JetBrains Mono", monospace; font-size: 14px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+.kv div:nth-child(odd) { color: var(--muted); }
+.note { font: italic 13px Inter, sans-serif; color: var(--ink-2); margin-top: 8px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font: 500 11.5px Inter, sans-serif; background: #fdf0e3; color: #b0703a; }
+.stage-code { font-family: "JetBrains Mono", monospace; font-size: 12.5px; line-height: 1.9; color: var(--ink-2); }
+.stage-code .a { color: #3f6fa8; } .stage-code .g { color: #2f7a5c; } .stage-code .h { color: #c4566f; }
+footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-top: 1px solid var(--rule); font: 13px/1.6 Inter, sans-serif; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="title">
+  <h1>Catan on a GPU</h1>
+  <p class="sub">How a hex board becomes a 512-integer row, what a single move does inside a Pallas kernel, and why the hardest part was a road.</p>
+</div>
+<div class="byline">
+  <div><b>Author</b>Sam Boshar</div>
+  <div><b>Project</b>catanax</div>
+  <div><b>Status</b>Interactive draft</div>
+</div>
+
+<div class="l-text">
+  <p style="margin-top:32px">Self-play reinforcement learning is a throughput game. AlphaZero-style training plays millions of games, and every move runs a search that steps the environment many more times. catanatron, a careful Python engine, manages about a hundred games per second. To go faster, catanax rewrites Catan as a pure function over fixed-shape integer arrays, so thousands of games can step at once on a GPU.</p>
+  <p>This page follows one game through that pipeline: from the board, to the memory layout, to one move inside a fused kernel, to the hardware that runs it.</p>
+
+  <h2><span class="num">1</span>The board is just indices</h2>
+  <p>A Catan board looks like geometry, but the engine only needs <i>incidence</i>: which intersections touch which hex, and which road slots connect which intersections. There are 19 tiles, 54 nodes and 72 edges. Their relationships fit in a few tiny static tables, so every rule becomes a gather. For example, the distance rule ("no settlement next to another settlement") is <code>occupied[NODE_NEIGHBORS[n]].any()</code>.</p>
+  <p>The game's mutable state is 46 fixed-shape arrays, about 465 integers. For the kernels they're packed into a single row, padded to 512 values (2 KB). Hover over the board or the row to see how they correspond.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>The board · 19 tiles · 54 nodes · 72 edges</h3><svg id="board1" class="board-svg"></svg></div>
+    <div class="panel">
+      <h3>The same game as the kernel sees it · one int32 row</h3>
+      <svg id="row1"></svg>
+      <div class="legend" id="legend1"></div>
+      <div class="inspector" id="insp1">Hover a tile, a node, an edge, or a cell in the row.</div>
+    </div>
+  </div></div>
+  <figcaption><b>Figure 1.</b> Left: the board with catanax's ids, which match catanatron's exactly so the engine can be checked against it one-to-one. Right: the packed state row, 32 cells per line. Hovering a node highlights its cells (<code>node_owner</code>, <code>node_building</code>, and its bit in each player's road-component mask), its rows in the topology tables, and the action ids that refer to it. The position is an example.</figcaption>
+</figure>
+
+<div class="l-text">
+  <h2><span class="num">2</span>One move, one kernel launch</h2>
+  <p>The policy picks one of 294 flat action ids. Applying it means decoding the id, running the matching rule, and updating every field it touches. In the first version of the engine this was a <code>jax.vmap</code> over a 13-way <code>lax.switch</code>. Under <code>vmap</code>, a switch whose branch differs per game can't actually branch, so every game evaluated all 13 action families and threw 12 results away.</p>
+  <p>The Pallas version runs one program per game. A whole move — the applier, the road-cut connectivity check, the longest-road search and the winner check — happens in a single launch that reads and writes this game's row in place. Step through Blue building a settlement that cuts Orange's road:</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Blue builds a settlement on node 9</h3><svg id="board2" class="board-svg"></svg></div>
+    <div class="panel">
+      <h3 id="move-title">Inside the engine kernel</h3>
+      <div id="move-stage"></div>
+      <svg id="row2" style="margin-top:12px"></svg>
+      <div class="log" id="log2" style="margin-top:10px"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="m-prev">◀ Back</button><button id="m-next">Next ▶</button><button id="m-play">▶ Play</button>
+    <span class="toggle" id="m-mode"><button data-v="kernel" class="on">Pallas kernel</button><button data-v="vmap">jax.vmap</button></span>
+    <span class="step-label" id="m-step"></span>
+  </div></div>
+  <figcaption id="cap2"></figcaption>
+</figure>
+
+<div class="l-text">
+  <h2><span class="num">3</span>The hardest part was a road</h2>
+  <p><i>Longest road</i> awards 2 VP to whoever owns the longest trail of connected roads (at least 5) that doesn't reuse an edge and doesn't pass through an opponent's building. Computing it exactly is a search over trails, and its cost depends entirely on the shape of the road network. A straight line is trivial; a tangle with branches and loops explodes.</p>
+  <p>That variance is what made it expensive. Profiling the vmapped engine showed longest road taking <b>about 85% of step time</b>. The search itself isn't slow. The problem is that a vmapped <code>while_loop</code> runs in lockstep: the batch keeps iterating until its slowest board finishes. Average cost was 73 node visits; the worst board in a batch took 796.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel">
+      <h3>jax.vmap · lockstep while_loop</h3>
+      <svg id="race-v"></svg>
+      <div><span class="stat">time <b id="rv-t">0</b></span><span class="stat">lanes still working <b id="rv-a">64</b></span><span class="stat">useful work <b id="rv-u">–</b></span></div>
+    </div>
+    <div class="panel">
+      <h3>Pallas grid=(B,) · one program per game</h3>
+      <svg id="race-k"></svg>
+      <div><span class="stat">time <b id="rk-t">0</b></span><span class="stat">games finished <b id="rk-d">0</b></span></div>
+    </div>
+  </div>
+  <div class="controls"><button id="r-play">▶ Race</button><button id="r-reset">⟲ Reset</button><span class="step-label">64 games · per-game cost drawn to match the measured mean 73 / max 796 node visits</span></div></div>
+  <figcaption><b>Figure 3.</b> The straggler tax. Left: under <code>vmap</code>, every lane keeps "running" until the slowest board finishes (the red lane is the slowest board; hatched = done but still waiting). Right: with one Pallas program per game, each search retires on its own and the GPU schedules the next game into the freed slot; each colored segment is a different game. In the real engine this kernel was <b>9.5–12× faster</b> and bit-exact on 73,728 states.</figcaption>
+</figure>
+
+<div class="l-text">
+  <p>Several things were tried before the kernel. Running the search once per step instead of once per <code>switch</code> branch gave 2.8×. Updating incrementally (a new road can only extend trails <i>through</i> itself, so you only search from that edge) helped the common case. A closed-form formula based on node degree parity was attempted and <i>provably over-counts</i>. But a road cut, like the one in Figure 2, still needs a full search.</p>
+  <p>The kernel version had to work within Triton's limits: no scatter, no dynamic indexing into register vectors, power-of-two shapes. Its trick is that <b>a whole DFS frame fits in one 32-bit integer</b>: 6 bits of node, 5 bits of path length, and 16 bits of "which of my roads have I used" (a player owns at most 15). The stack is a vector of 32 such integers. A push can't be written as a scatter, so it's inverted: each stack slot <i>pulls</i> the candidate whose target position equals its own index.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Orange's roads after the cut</h3><svg id="board3" class="board-svg"></svg></div>
+    <div class="panel">
+      <div class="two">
+        <div><h3>The DFS stack · 32 × int32</h3><svg id="stack3"></svg></div>
+        <div>
+          <h3>State</h3>
+          <div class="kv" id="dfs-kv"></div>
+        </div>
+      </div>
+      <h3 style="margin-top:14px">Top entry, bit by bit</h3>
+      <svg id="bits3"></svg>
+      <h3 style="margin-top:14px">Push without scatter: slot s takes the candidate whose push_pos == s</h3>
+      <svg id="match3"></svg>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="d-reset">⟲ Reset</button><button id="d-next">Step ▶</button><button id="d-play">▶ Play</button>
+    <span class="step-label" id="d-step"></span>
+  </div></div>
+  <figcaption><b>Figure 4.</b> The exact search the kernel runs on Orange's network after Blue's settlement at node 9. It seeds the stack with every component node that touches an Orange road (ascending), then pops, extends along unused roads, and pushes. It never steps <i>into</i> an enemy-occupied node, so node 9 splits the road. Result: 4, down from 7. The match matrix shows which neighbor slot is written to which stack position on each push.</figcaption>
+</figure>
+
+<div class="l-text">
+  <h2><span class="num">4</span>What the A100 is actually doing</h2>
+  <p>With one program per game, each game runs as a single <b>warp</b>: 32 threads executing the same scalar engine code. Branches inside a program are real, because the whole warp agrees on which action it's applying. Different games taking different branches costs nothing, because that divergence is <i>between</i> warps, not within one.</p>
+  <p>An A100 has 108 streaming multiprocessors (SMs). Ampere allows at most 32 resident blocks per SM, so with one-warp blocks about 3,456 games are in flight at once, and a 4,096-game batch runs in about 1.2 waves. The batch's entire state is 4,096 × 2 KB = 8 MB, which fits in the 40 MB L2 cache.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel">
+      <h3>A100 · 108 SMs · each cell = one resident game</h3>
+      <svg id="chip"></svg>
+      <div><span class="stat">resident <b id="c-res">0</b></span><span class="stat">finished <b id="c-done">0</b> / 4096</span><span class="stat">wave <b id="c-wave">1</b></span></div>
+    </div>
+    <div class="panel">
+      <h3>One SM, zoomed in</h3>
+      <svg id="sm"></svg>
+      <h3 style="margin-top:12px">Where one game's data lives</h3>
+      <svg id="mem"></svg>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="c-play">▶ Run batch</button><button id="c-reset">⟲ Reset</button>
+    <span class="toggle" id="c-warps"><button data-v="1" class="on">num_warps = 1</button><button data-v="4">num_warps = 4</button></span>
+    <span class="step-label">colors = action family each game is executing</span>
+  </div></div>
+  <figcaption><b>Figure 5.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 6) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
+</figure>
+
+<div class="l-text">
+  <h2><span class="num">5</span>The bug that only appeared at batch 4,096</h2>
+  <p>A Pallas program on Triton compiles to <code>num_warps × 32</code> threads, with a default of four warps. Engine code is scalar, so every thread redundantly performs the same load, add and store to the same address. Within one warp that happens in lockstep and is harmless. But warps are scheduled independently. A lagging warp can load a value a faster warp has already incremented, and write back a doubled result.</p>
+  <p>In the engine kernel this corrupted about 11 of 4,096 games, different ones on every run, and never showed up at the batch sizes used during development. The fix, <code>num_warps=1</code>, is a correctness requirement for any kernel that updates memory in place.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Four warps, one program, one address</h3><svg id="warps"></svg></div>
+    <div class="panel">
+      <h3>node_visits[parent] in global memory</h3>
+      <svg id="cellsvg"></svg>
+      <div class="log" id="log6" style="margin-top:10px;height:190px"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="w-reset">⟲ Reset</button><button id="w-next">Step ▶</button><button id="w-play">▶ Play</button>
+    <span class="toggle" id="w-mode"><button data-v="4" class="on">num_warps = 4</button><button data-v="1">num_warps = 1</button></span>
+    <span class="step-label" id="w-step"></span>
+  </div></div>
+  <figcaption><b>Figure 6.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">open question: catanax's search backup and expand-write kernels still use the default four warps</span></figcaption>
+</figure>
+
+<footer>
+  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3 and 5 are schematics, not measurements.
+</footer>
+<script>
+// ---------------------------------------------------------------------------
+// Real catanax board topology (catanax/_src/board_constants.py)
+// ---------------------------------------------------------------------------
+const TILE_COORDS = [[0,0,0],[1,-1,0],[0,-1,1],[-1,0,1],[-1,1,0],[0,1,-1],[1,0,-1],[2,-2,0],[1,-2,1],[0,-2,2],[-1,-1,2],[-2,0,2],[-2,1,1],[-2,2,0],[-1,2,-1],[0,2,-2],[1,1,-2],[2,0,-2],[2,-1,-1]];
+const TILE_NODES = [[0,1,2,3,4,5],[6,7,8,9,2,1],[2,9,10,11,12,3],[4,3,12,13,14,15],[16,5,4,15,17,18],[19,20,0,5,16,21],[22,23,6,1,0,20],[24,25,26,27,8,7],[8,27,28,29,10,9],[10,29,30,31,32,11],[12,11,32,33,34,13],[14,13,34,35,36,37],[17,15,14,37,38,39],[40,18,17,39,41,42],[43,21,16,18,40,44],[45,46,19,21,43,47],[48,49,22,20,19,46],[50,51,52,23,22,49],[52,53,24,7,6,23]];
+const EDGE_NODES = [[0,1],[0,5],[0,20],[1,2],[1,6],[2,3],[2,9],[3,4],[3,12],[4,5],[4,15],[5,16],[6,7],[6,23],[7,8],[7,24],[8,9],[8,27],[9,10],[10,11],[10,29],[11,12],[11,32],[12,13],[13,14],[13,34],[14,15],[14,37],[15,17],[16,18],[16,21],[17,18],[17,39],[18,40],[19,20],[19,21],[19,46],[20,22],[21,43],[22,23],[22,49],[23,52],[24,25],[24,53],[25,26],[26,27],[27,28],[28,29],[29,30],[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,41],[40,42],[40,44],[41,42],[43,44],[43,47],[45,46],[45,47],[46,48],[48,49],[49,50],[50,51],[51,52],[52,53]];
+const NODE_TILES = [[0,5,6],[0,1,6],[0,1,2],[0,2,3],[0,3,4],[0,4,5],[1,6,18],[1,7,18],[1,7,8],[1,2,8],[2,8,9],[2,9,10],[2,3,10],[3,10,11],[3,11,12],[3,4,12],[4,5,14],[4,12,13],[4,13,14],[5,15,16],[5,6,16],[5,14,15],[6,16,17],[6,17,18],[7,18,-1],[7,-1,-1],[7,-1,-1],[7,8,-1],[8,-1,-1],[8,9,-1],[9,-1,-1],[9,-1,-1],[9,10,-1],[10,-1,-1],[10,11,-1],[11,-1,-1],[11,-1,-1],[11,12,-1],[12,-1,-1],[12,13,-1],[13,14,-1],[13,-1,-1],[13,-1,-1],[14,15,-1],[14,-1,-1],[15,-1,-1],[15,16,-1],[15,-1,-1],[16,-1,-1],[16,17,-1],[17,-1,-1],[17,-1,-1],[17,18,-1],[18,-1,-1]];
+const NODE_EDGES = [[0,1,2],[0,3,4],[3,5,6],[5,7,8],[7,9,10],[1,9,11],[4,12,13],[12,14,15],[14,16,17],[6,16,18],[18,19,20],[19,21,22],[8,21,23],[23,24,25],[24,26,27],[10,26,28],[11,29,30],[28,31,32],[29,31,33],[34,35,36],[2,34,37],[30,35,38],[37,39,40],[13,39,41],[15,42,43],[42,44,-1],[44,45,-1],[17,45,46],[46,47,-1],[20,47,48],[48,49,-1],[49,50,-1],[22,50,51],[51,52,-1],[25,52,53],[53,54,-1],[54,55,-1],[27,55,56],[56,57,-1],[32,57,58],[33,59,60],[58,61,-1],[59,61,-1],[38,62,63],[60,62,-1],[64,65,-1],[36,64,66],[63,65,-1],[66,67,-1],[40,67,68],[68,69,-1],[69,70,-1],[41,70,71],[43,71,-1]];
+const NODE_NEIGHBORS = [[1,5,20],[0,2,6],[1,3,9],[2,4,12],[3,5,15],[0,4,16],[1,7,23],[6,8,24],[7,9,27],[2,8,10],[9,11,29],[10,12,32],[3,11,13],[12,14,34],[13,15,37],[4,14,17],[5,18,21],[15,18,39],[16,17,40],[20,21,46],[0,19,22],[16,19,43],[20,23,49],[6,22,52],[7,25,53],[24,26,-1],[25,27,-1],[8,26,28],[27,29,-1],[10,28,30],[29,31,-1],[30,32,-1],[11,31,33],[32,34,-1],[13,33,35],[34,36,-1],[35,37,-1],[14,36,38],[37,39,-1],[17,38,41],[18,42,44],[39,42,-1],[40,41,-1],[21,44,47],[40,43,-1],[46,47,-1],[19,45,48],[43,45,-1],[46,49,-1],[22,48,50],[49,51,-1],[50,52,-1],[23,51,53],[24,52,-1]];
+const PORT_SLOT_NODES = [[25,26],[28,29],[32,33],[35,36],[38,39],[40,44],[45,47],[48,49],[52,53]];
+const SPIRAL_TILE_IDS = [7,18,17,16,15,14,13,12,11,10,9,8,1,6,5,4,3,2,0];
+const SPIRAL_NUMBERS = [5,2,6,3,8,10,9,12,11,4,8,10,9,4,5,6,3,11];
+
+// Example layout (a legal BASE multiset; desert in the centre).
+const RES_NAMES = ["wood","brick","sheep","wheat","ore"];
+const RES_COLORS = ["var(--wood)","var(--brick)","var(--sheep)","var(--wheat)","var(--ore)"];
+const TILE_RES = [-1,3,0,2,4,1,2,0,3,2,1,4,0,3,2,1,0,3,4];
+const TILE_NUM = new Array(19).fill(0);
+{ let k = 0; for (const t of SPIRAL_TILE_IDS) { if (TILE_RES[t] === -1) continue; TILE_NUM[t] = SPIRAL_NUMBERS[k++]; } }
+const PORT_TYPES = [5,0,5,1,5,2,3,5,4];
+
+// Action blocks (catanax/_src/catan.py).
+const FAMILIES = [
+  ["ROLL",0,0],["END",1,1],["road",2,73],["settlement",74,127],["city",128,181],["buy dev",182,182],
+  ["knight",183,183],["robber",184,202],["discard",203,207],["year of plenty",208,227],["monopoly",228,232],
+  ["road building",233,233],["maritime",234,293]];
+
+// GameState leaves, in pack order (46 leaves, 465 int32).
+const FIELDS = [
+  ["tile_resources",19,"board"],["tile_numbers",19,"board"],["port_types",9,"board"],["robber_tile",1,"board"],
+  ["node_owner",54,"build"],["node_building",54,"build"],["edge_owner",72,"road"],["node_in_component",108,"comp"],
+  ["hands",10,"res"],["bank",5,"res"],
+  ["dev_hand",10,"dev"],["dev_owned_at_start",10,"dev"],["dev_played",10,"dev"],["has_played_dev_in_turn",2,"dev"],["dev_deck",25,"dev"],["dev_deck_ptr",1,"dev"],
+  ["longest_road_color",1,"vp"],["longest_road_lengths",2,"vp"],["reported_road_lengths",2,"vp"],["largest_army_color",1,"vp"],["visible_vp",2,"vp"],["actual_vp",2,"vp"],
+  ["roads_available",2,"stock"],["settlements_available",2,"stock"],["cities_available",2,"stock"],
+  ["current_seat",1,"phase"],["current_turn_seat",1,"phase"],["prompt",1,"phase"],["has_rolled",2,"phase"],["is_road_building",1,"phase"],["free_roads_available",1,"phase"],["discard_counts",2,"phase"],["num_turns",1,"phase"],["settlements_placed",2,"phase"],["last_settlement_node",1,"phase"],["winner",1,"phase"],
+  ["last_dice",2,"chance"],["last_dev_bought",1,"chance"],["last_stolen_resource",1,"chance"],["win_vp",1,"chance"],["hold_limit",1,"chance"],["dice_counts",11,"chance"],["recent_rolls",5,"chance"],["sevens_by_player",2,"chance"],["seven_streak_owner",1,"chance"],["seven_streak_count",1,"chance"]];
+const GROUPS = {
+  board: ["board layout", "#9fd8cf"], build: ["buildings", "#f6d28f"], road: ["roads", "#f5bf92"],
+  comp: ["road components", "#c6b5ea"], res: ["hands + bank", "#b5e0b4"], dev: ["dev cards", "#f2b7cb"],
+  vp: ["awards + VP", "#f3e3a2"], stock: ["piece stocks", "#b6c9f2"], phase: ["turn / phase", "#a9d8ee"],
+  chance: ["dice + rules", "#c9cedb"], pad: ["padding to 512", "#f1f3f7"]};
+const OFF = {}; { let o = 0; for (const [n, s] of FIELDS) { OFF[n] = o; o += s; } OFF.__total = o; }
+const ROW_WIDTH = 512;
+const cellInfo = []; // offset -> {field, index, group}
+for (const [n, s, g] of FIELDS) for (let i = 0; i < s; i++) cellInfo.push({ field: n, index: i, size: s, group: g });
+while (cellInfo.length < ROW_WIDTH) cellInfo.push({ field: "padding", index: cellInfo.length - OFF.__total, size: ROW_WIDTH - OFF.__total, group: "pad" });
+
+// ---------------------------------------------------------------------------
+// Example position. Blue = seat 0, orange = seat 1.
+// ---------------------------------------------------------------------------
+const BLUE = 0, ORANGE = 1;
+const MOVE_NODE = 9;
+function makeState(after) {
+  const st = {};
+  for (const [n, s] of FIELDS) st[n] = new Array(s).fill(0);
+  st.tile_resources = TILE_RES.slice(); st.tile_numbers = TILE_NUM.slice(); st.port_types = PORT_TYPES.slice();
+  st.robber_tile = [0];
+  st.node_owner.fill(-1); st.edge_owner.fill(-1);
+  const settle = (n, p) => { st.node_owner[n] = p; st.node_building[n] = 1; };
+  const road = (e, p) => { st.edge_owner[e] = p; };
+  settle(27, BLUE); settle(43, BLUE); [17, 16, 38].forEach(e => road(e, BLUE));
+  settle(3, ORANGE); settle(11, ORANGE); [7, 5, 6, 18, 19, 22, 50].forEach(e => road(e, ORANGE));
+  const comp = (p, nodes) => nodes.forEach(n => st.node_in_component[p * 54 + n] = 1);
+  comp(BLUE, [27, 8, 9, 43, 21]); comp(ORANGE, [4, 3, 2, 9, 10, 11, 32, 31]);
+  st.hands = [2, 1, 1, 2, 0, 1, 0, 2, 1, 1];
+  st.bank = [16, 18, 16, 16, 18];
+  st.dev_deck = [0,3,1,0,0,2,0,4,0,1,0,3,0,0,2,0,1,0,4,0,0,3,0,0,1];
+  st.dev_deck_ptr = [2]; st.dev_hand = [1,0,0,0,0, 0,0,0,0,0]; st.dev_owned_at_start = [1,0,0,0,0, 0,0,0,0,0];
+  st.longest_road_color = [ORANGE]; st.longest_road_lengths = [2, 7]; st.reported_road_lengths = [2, 7];
+  st.largest_army_color = [-1]; st.visible_vp = [2, 4]; st.actual_vp = [2, 4];
+  st.roads_available = [12, 8]; st.settlements_available = [3, 3]; st.cities_available = [4, 4];
+  st.current_seat = [BLUE]; st.current_turn_seat = [BLUE]; st.prompt = [2]; st.has_rolled = [1, 0];
+  st.num_turns = [14]; st.settlements_placed = [2, 2]; st.last_settlement_node = [-1]; st.winner = [-1];
+  st.last_dice = [4, 4]; st.last_dev_bought = [-1]; st.last_stolen_resource = [-1];
+  st.win_vp = [10]; st.hold_limit = [7]; st.dice_counts = [1,2,3,4,5,6,5,4,3,2,1];
+  st.recent_rolls = [-1,-1,-1,-1,-1]; st.seven_streak_owner = [-1];
+  if (after) applySettlement(st);
+  return st;
+}
+function applySettlement(st) {
+  st.node_owner[MOVE_NODE] = BLUE; st.node_building[MOVE_NODE] = 1;
+  for (let r = 0; r < 4; r++) { st.hands[BLUE * 5 + r] -= 1; st.bank[r] += 1; }
+  st.settlements_available[BLUE] -= 1; st.visible_vp[BLUE] += 1; st.actual_vp[BLUE] += 1;
+  st.node_in_component[BLUE * 54 + MOVE_NODE] = 1;
+}
+function rowValue(st, off) {
+  const c = cellInfo[off]; if (c.group === "pad") return 0; return st[c.field][c.index];
+}
+
+// ---------------------------------------------------------------------------
+// SVG helpers + board geometry
+// ---------------------------------------------------------------------------
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const S = 40, R3 = Math.sqrt(3);
+const VOFF = [[0,-S],[S*R3/2,-S/2],[S*R3/2,S/2],[0,S],[-S*R3/2,S/2],[-S*R3/2,-S/2]];
+const tileCenter = TILE_COORDS.map(([x,, z]) => [S * R3 * (x + z / 2), S * 1.5 * z]);
+const nodePos = [];
+TILE_NODES.forEach((ns, t) => ns.forEach((n, k) => { nodePos[n] = [tileCenter[t][0] + VOFF[k][0], tileCenter[t][1] + VOFF[k][1]]; }));
+const VIEW = (() => { const xs = nodePos.map(p => p[0]), ys = nodePos.map(p => p[1]); const m = 46;
+  const x0 = Math.min(...xs) - m, y0 = Math.min(...ys) - m; return [x0, y0, Math.max(...xs) - x0 + m, Math.max(...ys) - y0 + m]; })();
+
+function drawBoard(svg, { labels = true, onHover } = {}) {
+  svg.setAttribute("viewBox", VIEW.join(" "));
+  svg.innerHTML = "";
+  const R = { tiles: [], nodes: [], edges: [], roads: [], pieces: [], tokens: [] };
+  // sea
+  const sea = el("g", {}, svg);
+  const hexR = S * 3 * 1.0 + S * 1.9;
+  const seaPts = []; for (let k = 0; k < 6; k++) { const a = Math.PI / 3 * k; seaPts.push([hexR * Math.cos(a), hexR * Math.sin(a)]); }
+  el("polygon", { points: seaPts.map(p => p.join(",")).join(" "), fill: "var(--sea)", stroke: "#c9dfee", "stroke-width": 2 }, sea);
+  // ports
+  PORT_SLOT_NODES.forEach(([a, b], i) => {
+    const [ax, ay] = nodePos[a], [bx, by] = nodePos[b]; const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const len = Math.hypot(mx, my); const px = mx + mx / len * 24, py = my + my / len * 24;
+    el("line", { x1: ax, y1: ay, x2: px, y2: py, stroke: "#d8bf94", "stroke-width": 2, "stroke-dasharray": "3 2" }, sea);
+    el("line", { x1: bx, y1: by, x2: px, y2: py, stroke: "#d8bf94", "stroke-width": 2, "stroke-dasharray": "3 2" }, sea);
+    const t = PORT_TYPES[i];
+    el("circle", { cx: px, cy: py, r: 11, fill: t === 5 ? "#eef0f6" : RES_COLORS[t], stroke: "#d8bf94", "stroke-width": 1.5 }, sea);
+    const tx = el("text", { x: px, y: py, class: "token-text", fill: "#2a2f3d", "font-size": 8 }, sea); tx.textContent = t === 5 ? "3:1" : "2:1";
+  });
+  // tiles
+  const tg = el("g", {}, svg);
+  tileCenter.forEach(([cx, cy], t) => {
+    const pts = VOFF.map(([dx, dy]) => [cx + dx * 0.97, cy + dy * 0.97].join(",")).join(" ");
+    const r = TILE_RES[t];
+    const poly = el("polygon", { points: pts, class: "tile-hex", fill: r < 0 ? "var(--desert)" : RES_COLORS[r] }, tg);
+    R.tiles[t] = poly;
+    if (TILE_NUM[t]) {
+      el("circle", { cx, cy, r: 12, class: "token" }, tg);
+      const tx = el("text", { x: cx, y: cy, class: "token-text", fill: (TILE_NUM[t] === 6 || TILE_NUM[t] === 8) ? "#c0262d" : "#3a3f52" }, tg);
+      tx.textContent = TILE_NUM[t];
+    } else {
+      // robber
+      el("path", { d: `M${cx - 7},${cy + 12} Q${cx},${cy - 22} ${cx + 7},${cy + 12} Z`, fill: "#7a7f94", stroke: "#fff" }, tg);
+    }
+    if (labels) { const l = el("text", { x: cx, y: cy + 22, class: "label-id", "text-anchor": "middle", fill: "#2a2f3d" }, tg); l.textContent = "t" + t; l.setAttribute("style", "fill:#2a2f3d88"); }
+    if (onHover) { poly.style.cursor = "pointer"; poly.addEventListener("mouseenter", () => onHover("tile", t)); }
+  });
+  // edges
+  const eg = el("g", {}, svg);
+  EDGE_NODES.forEach(([a, b], e) => {
+    const [ax, ay] = nodePos[a], [bx, by] = nodePos[b];
+    const sx = ax + (bx - ax) * 0.18, sy = ay + (by - ay) * 0.18, ex = ax + (bx - ax) * 0.82, ey = ay + (by - ay) * 0.82;
+    R.edges[e] = el("line", { x1: sx, y1: sy, x2: ex, y2: ey, class: "edge-line" }, eg);
+    R.roads[e] = el("line", { x1: sx, y1: sy, x2: ex, y2: ey, class: "road", stroke: "none" }, eg);
+    if (onHover) { const h = el("line", { x1: sx, y1: sy, x2: ex, y2: ey, class: "edge-line hit" }, eg); h.addEventListener("mouseenter", () => onHover("edge", e)); }
+  });
+  // nodes
+  const ng = el("g", {}, svg);
+  nodePos.forEach(([x, y], n) => {
+    R.nodes[n] = el("circle", { cx: x, cy: y, r: 5.5, class: "node-dot" }, ng);
+    R.pieces[n] = el("g", {}, ng);
+    if (labels) { const l = el("text", { x: x + 6, y: y - 6, class: "label-id" }, ng); l.textContent = n; }
+    if (onHover) R.nodes[n].addEventListener("mouseenter", () => onHover("node", n));
+  });
+  return R;
+}
+function renderPieces(R, st, { ghost = -1 } = {}) {
+  R.roads.forEach((r, e) => { const o = st.edge_owner[e]; r.setAttribute("stroke", o === 0 ? "var(--blue)" : o === 1 ? "var(--orange)" : "none"); r.style.opacity = 1; });
+  R.pieces.forEach((g, n) => {
+    g.innerHTML = "";
+    const o = st.node_owner[n];
+    const [x, y] = nodePos[n];
+    if (o >= 0 || n === ghost) {
+      const col = o === 1 ? "var(--orange)" : "var(--blue)";
+      el("path", { d: `M${x - 7},${y + 6} L${x - 7},${y - 2} L${x},${y - 9} L${x + 7},${y - 2} L${x + 7},${y + 6} Z`, fill: col, stroke: "#fff", "stroke-width": 1.5, opacity: o < 0 ? 0.45 : 1, "stroke-dasharray": o < 0 ? "2 2" : "" }, g);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Row grid (512 cells, 32 x 16)
+// ---------------------------------------------------------------------------
+const COLS = 32, CELL = 15;
+function drawRow(svg, onHover) {
+  const rows = ROW_WIDTH / COLS;
+  svg.setAttribute("viewBox", `-30 -4 ${COLS * CELL + 34} ${rows * CELL + 8}`);
+  svg.innerHTML = "";
+  const g = el("g", { class: "row-grid" }, svg);
+  const cells = [];
+  for (let i = 0; i < ROW_WIDTH; i++) {
+    const c = el("rect", { x: (i % COLS) * CELL, y: Math.floor(i / COLS) * CELL, width: CELL, height: CELL, class: "cell", fill: GROUPS[cellInfo[i].group][1], rx: 2 }, g);
+    if (onHover) c.addEventListener("mouseenter", () => onHover("cell", i));
+    cells.push(c);
+  }
+  for (let r = 0; r < rows; r++) { const t = el("text", { x: -4, y: r * CELL + 11, class: "label-id", "text-anchor": "end" }, g); t.textContent = r * COLS; }
+  return cells;
+}
+function highlightCells(cells, offs) {
+  const set = new Set(offs);
+  cells.forEach((c, i) => c.classList.toggle("dim", offs.length > 0 && !set.has(i)));
+}
+function legend(div) {
+  div.innerHTML = Object.entries(GROUPS).map(([, [n, c]]) => `<span><i style="background:${c}"></i>${n}</span>`).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Scene 1: board <-> row
+// ---------------------------------------------------------------------------
+function scene1() {
+  const st = makeState(false);
+  const insp = document.getElementById("insp1");
+  let B, cells;
+  const clearBoard = () => {
+    B.tiles.forEach(t => t.classList.remove("hl")); B.nodes.forEach(n => n.classList.remove("hl")); B.edges.forEach(e => e.classList.remove("hl"));
+  };
+  const fmt = arr => "[" + arr.join(", ") + "]";
+  const hover = (kind, i) => {
+    clearBoard();
+    let offs = [], txt = "";
+    if (kind === "node") {
+      B.nodes[i].classList.add("hl");
+      NODE_EDGES[i].forEach(e => e >= 0 && B.edges[e].classList.add("hl"));
+      NODE_NEIGHBORS[i].forEach(n => n >= 0 && B.nodes[n].classList.add("hl"));
+      NODE_TILES[i].forEach(t => t >= 0 && B.tiles[t].classList.add("hl"));
+      offs = [OFF.node_owner + i, OFF.node_building + i, OFF.node_in_component + i, OFF.node_in_component + 54 + i];
+      txt = `<span class="a">node ${i}</span>\n<span class="k">row[${OFF.node_owner + i}]</span> node_owner[${i}] = <span class="v">${st.node_owner[i]}</span>   <span class="k">row[${OFF.node_building + i}]</span> node_building[${i}] = <span class="v">${st.node_building[i]}</span>\n<span class="k">NODE_EDGES[${i}]</span> = ${fmt(NODE_EDGES[i])}   <span class="k">NODE_NEIGHBORS[${i}]</span> = ${fmt(NODE_NEIGHBORS[i])}\n<span class="k">NODE_TILES[${i}]</span> = ${fmt(NODE_TILES[i])}\n<span class="k">actions:</span> settle = <span class="a">${74 + i}</span>, city = <span class="a">${128 + i}</span>`;
+    } else if (kind === "edge") {
+      B.edges[i].classList.add("hl"); EDGE_NODES[i].forEach(n => B.nodes[n].classList.add("hl"));
+      offs = [OFF.edge_owner + i];
+      txt = `<span class="a">edge ${i}</span>\n<span class="k">row[${OFF.edge_owner + i}]</span> edge_owner[${i}] = <span class="v">${st.edge_owner[i]}</span>\n<span class="k">EDGE_NODES[${i}]</span> = ${fmt(EDGE_NODES[i])}\n<span class="k">action:</span> build road = <span class="a">${2 + i}</span>`;
+    } else if (kind === "tile") {
+      B.tiles[i].classList.add("hl"); TILE_NODES[i].forEach(n => B.nodes[n].classList.add("hl"));
+      offs = [OFF.tile_resources + i, OFF.tile_numbers + i];
+      const r = TILE_RES[i];
+      txt = `<span class="a">tile ${i}</span>  cube ${fmt(TILE_COORDS[i])}\n<span class="k">row[${OFF.tile_resources + i}]</span> tile_resources[${i}] = <span class="v">${r}</span> (${r < 0 ? "desert" : RES_NAMES[r]})   <span class="k">row[${OFF.tile_numbers + i}]</span> tile_numbers[${i}] = <span class="v">${TILE_NUM[i]}</span>\n<span class="k">TILE_NODES[${i}]</span> = ${fmt(TILE_NODES[i])}  (N, NE, SE, S, SW, NW)\n<span class="k">action:</span> move robber here = <span class="a">${184 + i}</span>`;
+    } else if (kind === "cell") {
+      const c = cellInfo[i];
+      offs = c.group === "pad" ? [] : [];
+      // highlight the whole field, emphasise the cell
+      const start = c.group === "pad" ? OFF.__total : OFF[c.field];
+      for (let k = 0; k < c.size; k++) offs.push(start + k);
+      if (c.field === "node_owner" || c.field === "node_building") hover("node", c.index);
+      else if (c.field === "edge_owner") hover("edge", c.index);
+      else if (c.field === "tile_resources" || c.field === "tile_numbers") hover("tile", c.index);
+      else if (c.field === "node_in_component") B.nodes[c.index % 54].classList.add("hl");
+      highlightCells(cells, offs);
+      const v = c.group === "pad" ? 0 : st[c.field][c.index];
+      insp.innerHTML = `<span class="k">row[${i}]</span>  ${c.field}${c.size > 1 ? "[" + c.index + "]" : ""} = <span class="v">${v}</span>\n<span class="k">field</span> ${c.field}: ${c.size} int32 at offset ${c.group === "pad" ? OFF.__total : OFF[c.field]}  ·  group: ${GROUPS[c.group][0]}\n<span class="k">row width</span> 465 used + 47 padding = 512 int32 = 2 KB per game`;
+      return;
+    }
+    highlightCells(cells, offs);
+    insp.innerHTML = txt;
+  };
+  B = drawBoard(document.getElementById("board1"), { onHover: hover });
+  renderPieces(B, st);
+  cells = drawRow(document.getElementById("row1"), hover);
+  legend(document.getElementById("legend1"));
+  document.getElementById("row1").addEventListener("mouseleave", () => highlightCells(cells, []));
+}
+
+// ---------------------------------------------------------------------------
+// Scene 2: one move through the engine kernel
+// ---------------------------------------------------------------------------
+function componentWalkRounds(st, victim, cutNode) {
+  const enemy = n => st.node_owner[n] >= 0 && st.node_owner[n] !== victim;
+  const victimEdge = e => st.edge_owner[e] === victim;
+  let reach = new Array(54).fill(0);
+  NODE_EDGES[cutNode].forEach(e => { if (e >= 0 && victimEdge(e)) { const [a, b] = EDGE_NODES[e]; reach[a === cutNode ? b : a] = 1; } });
+  const rounds = [reach.slice()];
+  for (let r = 0; r < 15; r++) {
+    const active = reach.map((v, n) => v && !enemy(n) ? 1 : 0);
+    const next = reach.slice();
+    for (let n = 0; n < 54; n++) for (let s = 0; s < 3; s++) {
+      const e = NODE_EDGES[n][s], m = NODE_NEIGHBORS[n][s];
+      if (e >= 0 && victimEdge(e) && active[m]) next[n] = 1;
+    }
+    reach = next; rounds.push(reach.slice());
+  }
+  return rounds;
+}
+function limbs(flags) { // 31-bit int32 limbs
+  const out = []; for (let s = 0; s < flags.length; s += 31) { let v = 0; for (let i = s; i < Math.min(s + 31, flags.length); i++) if (flags[i]) v |= (1 << (i - s)); out.push(v >>> 0); } return out;
+}
+function bitStrip(svg, flags, { y = 0, label = "", hi = [] , color = "var(--accent)"} = {}) {
+  const g = el("g", {}, svg);
+  const l = el("text", { x: 0, y: y + 9, class: "label-id", style: "font-size:9px;fill:#8b91a5" }, g); l.textContent = label;
+  const nl = Math.ceil(flags.length / 31);
+  for (let L = 0; L < nl; L++) {
+    const gy = y + 14 + L * 13;
+    const t = el("text", { x: 0, y: gy + 8, class: "label-id" }, g); t.textContent = "limb " + L;
+    for (let b = 0; b < 31; b++) {
+      const i = L * 31 + b; const valid = i < flags.length;
+      el("rect", { x: 42 + (30 - b) * 11, y: gy, width: 10, height: 10, rx: 1.5, fill: !valid ? "#f5f6fa" : flags[i] ? (hi.includes(i) ? "var(--hot)" : color) : "#eceff6", stroke: "#fff" }, g);
+    }
+    el("rect", { x: 42 - 11, y: gy, width: 10, height: 10, rx: 1.5, fill: "#f8dfe6", stroke: "#fff" }, g); // sign bit
+  }
+  return 14 + nl * 13;
+}
+function scene2() {
+  const B = drawBoard(document.getElementById("board2"), { labels: true });
+  const rowSvg = document.getElementById("row2");
+  const cells = drawRow(rowSvg);
+  const stage = document.getElementById("move-stage");
+  const logEl = document.getElementById("log2");
+  const cap = document.getElementById("cap2");
+  let mode = "kernel", step = 0, playing = null;
+  const action = 74 + MOVE_NODE;
+  const before = makeState(false), after = makeState(true);
+  const rounds = componentWalkRounds(after, ORANGE, MOVE_NODE);
+  const writes = [
+    [`row.set(node_owner + ${MOVE_NODE}, seat=0)`, [OFF.node_owner + MOVE_NODE]],
+    [`row.set(node_building + ${MOVE_NODE}, 1)`, [OFF.node_building + MOVE_NODE]],
+    [`_pay_cost: hands[0][wood,brick,sheep,wheat] -= 1`, [0, 1, 2, 3].map(r => OFF.hands + r)],
+    [`           bank[wood,brick,sheep,wheat] += 1`, [0, 1, 2, 3].map(r => OFF.bank + r)],
+    [`row.add(settlements_available + 0, -1)`, [OFF.settlements_available]],
+    [`row.add(visible_vp + 0, +1); row.add(actual_vp + 0, +1)`, [OFF.visible_vp, OFF.actual_vp]],
+    [`row.set(node_in_component + 0*54 + ${MOVE_NODE}, 1)`, [OFF.node_in_component + MOVE_NODE]],
+  ];
+  const STEPS = [
+    { title: "The position", run() {
+      renderPieces(B, before, { ghost: MOVE_NODE }); B.nodes[MOVE_NODE].classList.add("hl");
+      stage.innerHTML = `<div class="kv"><div>to move</div><div><b style="color:var(--blue)">Blue</b> (seat 0), has rolled</div><div>hand</div><div class="mono">wood 2 · brick 1 · sheep 1 · wheat 2</div><div>Orange</div><div>longest road = 7 (nodes 4→3→2→9→10→11→32→31)</div><div>Blue's choice</div><div>settlement on <b>node 9</b>, right on Orange's road</div></div>`;
+      highlightCells(cells, []);
+      return "One game, one row. Blue can afford a settlement and node 9 is legal (Blue has a road into it, and no neighbouring node is occupied). Building there also <b>cuts Orange's 7-long road</b>, which is the expensive case for the engine.";
+    }},
+    { title: "Action id → family", run() {
+      renderPieces(B, before, { ghost: MOVE_NODE });
+      stage.innerHTML = `<div class="mono" style="font-size:13px;line-height:1.9">
+        settlement on node 9 → action <span style="color:var(--accent)">74 + 9 = ${action}</span><br>
+        searchsorted(_BLOCK_STARTS, ${action}) → block <span style="color:var(--ok)">settlement [74, 127]</span><br>
+        argument = ${action} − 74 = <span style="color:var(--ok)">node 9</span></div>`;
+      highlightCells(cells, []);
+      return "The policy outputs one of <b>294 flat action ids</b>. The engine decodes it into an action family plus an argument: here the settlement block, at node 9. The policy head never sees \"build settlement\"; it just scores id 83.";
+    }},
+    { title: "Dispatch", run() {
+      const lit = FAMILIES.map(([n, a, b]) => {
+        const live = action >= a && action <= b;
+        const cls = mode === "kernel" ? (live ? "live" : "") : (live ? "live" : "waste");
+        return `<div class="${cls}">${n}<small>${a === b ? a : a + "–" + b}</small></div>`;
+      }).join("");
+      stage.innerHTML = `<div class="fam">${lit}</div><div class="note">${mode === "kernel"
+        ? "pl.when(74 ≤ action < 128): a real branch. The whole warp is one game, so it agrees on the predicate and the other 12 families are skipped."
+        : "vmap over lax.switch: every lane runs all 13 appliers, then a select keeps one result. Striped = computed and thrown away."}</div>`;
+      return mode === "kernel"
+        ? "In the Pallas kernel each program <i>is</i> one game, so <code>pl.when(...)</code> compiles to a real branch: <b>only the settlement code runs</b>. Toggle to <b>jax.vmap</b> to see what the XLA version does."
+        : "Under <code>jax.vmap</code>, a <code>lax.switch</code> on a batched index can't branch (different games want different branches), so XLA evaluates <b>all 13 families for every game</b> and selects one. That waste is why the vmapped step was slow.";
+    }},
+    { title: "Writes into the row", sub: writes.length, run(k) {
+      renderPieces(B, after);
+      stage.innerHTML = `<div class="mono" style="font-size:12.5px">Each field access = one load/store at a computed offset into this game's row:</div>`;
+      const offs = writes.slice(0, k + 1).flatMap(w => w[1]);
+      highlightCells(cells, offs);
+      cells.forEach(c => c.classList.remove("flash")); writes[k][1].forEach(o => cells[o].classList.add("flash"));
+      logEl.innerHTML = writes.map((w, i) => `<div class="${i <= k ? "cur" : ""}">${w[0]}</div>`).join("");
+      return "The applier mutates the row <b>in place</b>: <code>row.set(offset, value)</code> is a single <code>pltr.load</code> / <code>pltr.store</code>. The first version of this kernel did every field access as a masked reduction over all 512 lanes, and came out <b>slower than plain XLA</b> (0.95×).";
+    }},
+    { title: "Road-cut check", run() {
+      renderPieces(B, after);
+      NODE_EDGES[MOVE_NODE].forEach(e => B.edges[e].classList.add("hl"));
+      const rowsTxt = NODE_EDGES[MOVE_NODE].map(e => { const o = after.edge_owner[e]; return `edge_owner[${e}] = ${o}  ${o === ORANGE ? "← opponent" : o === BLUE ? "(own)" : ""}`; }).join("<br>");
+      stage.innerHTML = `<div class="mono" style="font-size:12.5px;line-height:1.8">for slot in NODE_EDGES[9] = [6, 16, 18]:<br>${rowsTxt}<br><span style="color:var(--hot)">opponent_edges == 2 → cut = True</span></div>`;
+      highlightCells(cells, NODE_EDGES[MOVE_NODE].map(e => OFF.edge_owner + e));
+      return "Two of Orange's roads meet at node 9, so this settlement <b>splits Orange's road network</b>. The engine has to work out which of Orange's nodes are still connected (<code>pl.when(cut)</code>). Another real branch: most settlements skip this entirely.";
+    }},
+    { title: "Component walk as bit relaxation", sub: 6, run(k) {
+      renderPieces(B, after);
+      const reach = rounds[Math.min(k, rounds.length - 1)];
+      reach.forEach((v, n) => v && B.nodes[n].classList.add("hl"));
+      const edges = after.edge_owner.map(o => o === ORANGE ? 1 : 0);
+      stage.innerHTML = ""; const sv = el("svg", { viewBox: "0 0 390 108" }); stage.appendChild(sv);
+      let y = bitStrip(sv, edges, { y: 0, label: "Orange's 72 edges → 3 × 31-bit int32 limbs (pink = sign bit, unused)", color: "var(--orange)" });
+      bitStrip(sv, reach, { y: y + 6, label: `reach mask over 54 nodes · round ${k}${k >= 5 ? " (converged; loop still runs 15)" : ""}`, color: "var(--accent)" });
+      highlightCells(cells, [...Array(54).keys()].map(n => OFF.node_in_component + 54 + n));
+      return `Triton can't do a queue-based BFS, or gather from a register vector. So reachability is <b>15 fixed rounds</b> of <code>reach |= any(neighbour_reach & orange_edge & ~enemy)</code> over bitmasks, read with shifts: <code>(mask >> idx) & 1</code>. Masks are split into 31-bit limbs because x64 is off and bit 31 is the sign bit. Round ${k}: ${reach.reduce((a, b) => a + b, 0)} nodes reached. Node 9 is reached but never expanded through.`;
+    }},
+    { title: "Longest road + finish", run() {
+      renderPieces(B, after);
+      stage.innerHTML = `<div class="mono" style="font-size:12.5px;line-height:1.9">_length_update_target → <span style="color:var(--hot)">CUT</span>: recompute Orange's longest road<br>in-kernel DFS over Orange's roads → <span style="color:var(--ok)">4</span> (was 7)<br>_apply_length_update + winner check<br><span style="color:var(--muted)">all inside the same single launch</span></div>`;
+      highlightCells(cells, [OFF.longest_road_color, OFF.longest_road_lengths, OFF.longest_road_lengths + 1, OFF.visible_vp, OFF.visible_vp + 1, OFF.actual_vp, OFF.actual_vp + 1, OFF.winner]);
+      logEl.innerHTML += `<div class="cur">longest road DFS (victim = orange) → 4</div><div class="cur">award + winner check</div>`;
+      return "The step finishes inside the same launch: classify the longest-road update, run the DFS only on lanes that need it (next tab), apply awards and check for a winner. The whole thing runs as <b>one kernel launch per step</b>: 4.0× faster on colonist and 5.2× on catanatron rules than the XLA version.";
+    }},
+  ];
+  // flatten sub-steps
+  const flat = []; STEPS.forEach((s, i) => { const n = s.sub || 1; for (let k = 0; k < n; k++) flat.push([i, k]); });
+  function show() {
+    B.nodes.forEach(n => n.classList.remove("hl")); B.edges.forEach(e => e.classList.remove("hl"));
+    cells.forEach(c => c.classList.remove("flash"));
+    const [i, k] = flat[step];
+    if (i < 3) logEl.innerHTML = "";
+    if (i === 4 || i === 5) logEl.innerHTML = writes.map(w => `<div>${w[0]}</div>`).join("");
+    cap.innerHTML = "<b>Figure 2.</b> " + STEPS[i].run(k);
+    document.getElementById("move-title").textContent = `${i + 1}. ${STEPS[i].title}`;
+    document.getElementById("m-step").textContent = `step ${step + 1} / ${flat.length}`;
+  }
+  document.getElementById("m-next").onclick = () => { step = Math.min(step + 1, flat.length - 1); show(); };
+  document.getElementById("m-prev").onclick = () => { step = Math.max(step - 1, 0); show(); };
+  document.getElementById("m-play").onclick = (ev) => {
+    if (playing) { clearInterval(playing); playing = null; ev.target.textContent = "▶ Play"; return; }
+    ev.target.textContent = "⏸ Pause";
+    playing = setInterval(() => { if (step >= flat.length - 1) { clearInterval(playing); playing = null; ev.target.textContent = "▶ Play"; return; } step++; show(); }, 1500);
+  };
+  document.querySelectorAll("#m-mode button").forEach(b => b.onclick = () => {
+    mode = b.dataset.v; document.querySelectorAll("#m-mode button").forEach(x => x.classList.toggle("on", x === b));
+    const di = flat.findIndex(([i]) => i === 2); if (flat[step][0] !== 2) step = di; show();
+  });
+  show();
+}
+
+// ---------------------------------------------------------------------------
+// Scene 3: the longest-road DFS, exactly as the standalone kernel does it
+// ---------------------------------------------------------------------------
+function dfsTrace(st, player) {
+  const owned = st.edge_owner.map(o => o === player);
+  const enemy = st.node_owner.map(o => o >= 0 && o !== player);
+  const slotOf = new Array(72).fill(-1); { let k = 0; owned.forEach((o, e) => { if (o) slotOf[e] = k++; }); }
+  const comp = n => st.node_in_component[player * 54 + n];
+  const starts = []; for (let n = 0; n < 54; n++) if (comp(n) && NODE_EDGES[n].some(e => e >= 0 && owned[e])) starts.push(n);
+  let stack = starts.map(n => ({ node: n, len: 0, used: 0, edges: [] }));
+  let best = 0;
+  const frames = [{ kind: "seed", stack: stack.slice(), best, starts }];
+  while (stack.length) {
+    const top = stack.length;
+    const entry = stack[top - 1]; stack = stack.slice(0, -1);
+    const cands = [];
+    for (let s = 0; s < 4; s++) {
+      const e = s < 3 ? NODE_EDGES[entry.node][s] : -1; const m = s < 3 ? NODE_NEIGHBORS[entry.node][s] : -1;
+      const valid = e >= 0 && owned[e];
+      const can = valid && !((entry.used >> slotOf[e]) & 1) && !enemy[m];
+      cands.push({ can, e, m, slot: s });
+    }
+    let pos = top - 1; const pushes = [];
+    for (const c of cands) if (c.can) { const ne = { node: c.m, len: entry.len + 1, used: entry.used | (1 << slotOf[c.e]), edges: [...entry.edges, c.e] }; pushes.push({ pos, slot: c.slot, entry: ne }); pos++; }
+    pushes.forEach(p => stack.push(p.entry));
+    if (pushes.length) best = Math.max(best, entry.len + 1);
+    frames.push({ kind: "pop", popped: entry, poppedAt: top - 1, pushes, cands, stack: stack.slice(), best });
+  }
+  return { frames, slotOf };
+}
+function scene3() {
+  const st = makeState(true);
+  const B = drawBoard(document.getElementById("board3"), { labels: true });
+  renderPieces(B, st);
+  B.roads.forEach((r, e) => { if (st.edge_owner[e] === BLUE) r.style.opacity = 0.25; });
+  const { frames, slotOf } = dfsTrace(st, ORANGE);
+  const stackSvg = document.getElementById("stack3"), bitsSvg = document.getElementById("bits3"), matchSvg = document.getElementById("match3");
+  const kv = document.getElementById("dfs-kv");
+  let f = 0, playing = null;
+  const pack = en => (en.node | (en.len << 6) | (en.used << 11)) >>> 0;
+  function draw() {
+    const fr = frames[f];
+    B.nodes.forEach(n => n.classList.remove("hl")); B.edges.forEach(e => e.classList.remove("hl"));
+    renderPieces(B, st); B.roads.forEach((r, e) => { r.style.opacity = st.edge_owner[e] === BLUE ? 0.25 : 1; r.setAttribute("stroke-width", 6.5); });
+    // board: highlight current path
+    if (fr.popped) { fr.popped.edges.forEach(e => { B.roads[e].setAttribute("stroke", "#c4566f"); B.roads[e].setAttribute("stroke-width", 9); }); B.nodes[fr.popped.node].classList.add("hl"); fr.pushes.forEach(p => B.nodes[p.entry.node].classList.add("hl")); }
+    else fr.starts.forEach(n => B.nodes[n].classList.add("hl"));
+    // stack
+    stackSvg.setAttribute("viewBox", "0 0 230 390"); stackSvg.innerHTML = "";
+    const h = 11.5;
+    for (let s = 0; s < 32; s++) {
+      const y = 380 - (s + 1) * h;
+      const en = fr.stack[s];
+      const pushed = fr.pushes && fr.pushes.some(p => p.pos === s);
+      el("rect", { x: 22, y, width: 200, height: h - 1.5, rx: 2, fill: en ? (pushed ? "#dcf2e7" : "#e4ecfa") : "#f5f6fa", stroke: pushed ? "var(--ok)" : "#e3e6ee" }, stackSvg);
+      const t = el("text", { x: 18, y: y + 8.5, class: "label-id", "text-anchor": "end" }, stackSvg); t.textContent = s;
+      if (en) { const tx = el("text", { x: 28, y: y + 8.5, class: "label-id", style: "fill:#2a2f3d;font-size:8.5px" }, stackSvg); tx.textContent = `n=${String(en.node).padStart(2)} len=${en.len} used=${en.used.toString(2).padStart(7, "0")}  0x${pack(en).toString(16).padStart(8, "0")}`; }
+    }
+    if (fr.kind === "pop") { const y = 380 - (fr.poppedAt + 1) * h; el("text", { x: 226, y: y + 8.5, class: "label-id", style: "fill:var(--hot)", "text-anchor": "end" }, stackSvg).textContent = ""; }
+    const ttl = el("text", { x: 22, y: 8, class: "label-id", style: "fill:#8b91a5;font-size:9px" }, stackSvg); ttl.textContent = "stack[32] (bottom = slot 0)";
+    // kv
+    const owned = Object.entries(slotOf).filter(([, s]) => s >= 0).map(([e, s]) => `${e}→${s}`).join(" ");
+    kv.innerHTML = `<div>iteration</div><div class="mono">${f} / ${frames.length - 1}</div>
+      <div>${fr.kind === "seed" ? "seeded" : "popped"}</div><div class="mono">${fr.kind === "seed" ? fr.starts.length + " start nodes " + JSON.stringify(fr.starts) : "node " + fr.popped.node + ", len " + fr.popped.len}</div>
+      <div>pushed</div><div class="mono">${fr.pushes ? (fr.pushes.map(p => "→" + p.entry.node).join(" ") || "none (dead end)") : "–"}</div>
+      <div>best</div><div class="mono" style="color:var(--ok)">${fr.best}</div>
+      <div>edge→slot</div><div class="mono" style="font-size:11px">${owned}</div>`;
+    // bits of top entry
+    const top = fr.stack[fr.stack.length - 1];
+    bitsSvg.setAttribute("viewBox", "0 0 360 50"); bitsSvg.innerHTML = "";
+    if (top) {
+      const v = pack(top);
+      for (let b = 31; b >= 0; b--) {
+        const x = (31 - b) * 11; const on = (v >> b) & 1;
+        const seg = b < 6 ? "#7cc4e8" : b < 11 ? "#f1c75b" : b < 27 ? "#f2a65e" : "#e3e6ee";
+        el("rect", { x, y: 4, width: 10, height: 14, rx: 1.5, fill: on ? seg : "#f5f6fa", stroke: seg }, bitsSvg);
+      }
+      [[5, 5, "used edges (16 bits)", "#e9955a", 11], [21, 25, "len", "#f1c75b", 6], [26, 31, "node", "#7cc4e8", 0]].forEach(([a, , lab, c, lo]) => {
+        const tx = el("text", { x: a * 11, y: 32, class: "label-id", style: `fill:${c};font-size:9px` }, bitsSvg); tx.textContent = lab + " <<" + lo;
+      });
+      const tx = el("text", { x: 0, y: 46, class: "label-id", style: "fill:#2a2f3d;font-size:9px" }, bitsSvg);
+      tx.textContent = `= ${top.node} | ${top.len}<<6 | 0b${top.used.toString(2)}<<11 = 0x${v.toString(16)}`;
+    }
+    // match matrix
+    matchSvg.setAttribute("viewBox", "0 0 360 76"); matchSvg.innerHTML = "";
+    const lab = el("text", { x: 0, y: 8, class: "label-id", style: "fill:#8b91a5;font-size:9px" }, matchSvg);
+    lab.textContent = "rows = neighbour slots (padded to 4) · cols = stack slots 0–31";
+    for (let r = 0; r < 4; r++) for (let s = 0; s < 32; s++) {
+      const hit = fr.pushes && fr.pushes.some(p => p.slot === r && p.pos === s);
+      const can = fr.cands && fr.cands[r].can;
+      el("rect", { x: 30 + s * 10.4, y: 14 + r * 14, width: 9.4, height: 12, rx: 1.5, fill: hit ? "var(--ok)" : can ? "#dbe7f6" : "#f1f3f8" }, matchSvg);
+    }
+    for (let r = 0; r < 4; r++) { const t = el("text", { x: 0, y: 23 + r * 14, class: "label-id" }, matchSvg); t.textContent = fr.cands ? (fr.cands[r].can ? "e" + fr.cands[r].e : r < 3 && NODE_EDGES[fr.popped.node][r] >= 0 ? "×" : "pad") : "–"; }
+    document.getElementById("d-step").textContent = fr.kind === "seed" ? "seed: every component node touching an Orange road" : `pop node ${fr.popped.node} → ${fr.pushes.length} push${fr.pushes.length === 1 ? "" : "es"}`;
+  }
+  document.getElementById("d-next").onclick = () => { f = Math.min(f + 1, frames.length - 1); draw(); };
+  document.getElementById("d-reset").onclick = () => { f = 0; draw(); };
+  document.getElementById("d-play").onclick = (ev) => {
+    if (playing) { clearInterval(playing); playing = null; ev.target.textContent = "▶ Play"; return; }
+    ev.target.textContent = "⏸ Pause";
+    playing = setInterval(() => { if (f >= frames.length - 1) { clearInterval(playing); playing = null; ev.target.textContent = "▶ Play"; return; } f++; draw(); }, 700);
+  };
+  draw();
+}
+
+// ---------------------------------------------------------------------------
+// Scene 4: lockstep vs per-game
+// ---------------------------------------------------------------------------
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function straggerCosts() {
+  const r = rng(7); const xs = [];
+  for (let i = 0; i < 64; i++) { const u = Math.max(1e-6, r()), v = r(); const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); xs.push(Math.exp(3.85 + 0.85 * z)); }
+  xs[37] = 796;
+  const others = xs.reduce((a, b, i) => i === 37 ? a : a + b, 0);
+  const scale = (73 * 64 - 796) / others;
+  return xs.map((x, i) => i === 37 ? 796 : Math.max(4, Math.round(x * scale)));
+}
+function scene4() {
+  const costs = straggerCosts();
+  const maxC = Math.max(...costs);
+  const vs = document.getElementById("race-v"), ks = document.getElementById("race-k");
+  const H = 5.2, W = 380, PAL = ["#9cc3ec", "#9fd8bd", "#c6b5ea", "#f3d98f", "#f5bf92"];
+  const sc = x => x / maxC * W;
+  // per-game kernel: each slot runs a queue of games back to back
+  const lanes = costs.map((c, i) => { const q = [c]; let k = 1, tot = c; while (tot < maxC) { const n = costs[(i * 13 + k * 29) % 64]; q.push(n); tot += n; k++; } return q; });
+  let t = 0, timer = null, V, K;
+  function setup(svg, kind) {
+    svg.setAttribute("viewBox", `0 0 ${W + 4} ${64 * H + 14}`); svg.innerHTML = "";
+    if (kind === "v") { const d = el("defs", {}, svg); const p = el("pattern", { id: "stripe", width: 5, height: 5, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, d); el("rect", { width: 2.2, height: 5, fill: "#cfd5e3" }, p); }
+    const rows = [];
+    for (let i = 0; i < 64; i++) { el("rect", { x: 0, y: i * H, width: W, height: H - 1, fill: "#f4f5f9" }, svg); rows.push(el("g", {}, svg)); }
+    const tl = el("line", { x1: 0, y1: 0, x2: 0, y2: 64 * H, stroke: "var(--hot)", "stroke-width": 1.5 }, svg);
+    el("text", { x: 0, y: 64 * H + 11, class: "label-id" }, svg).textContent = "time → (0 … 796 node visits)";
+    return { rows, tl };
+  }
+  function draw() {
+    const tt = Math.min(t, maxC);
+    costs.forEach((c, i) => {
+      const g = V.rows[i]; g.innerHTML = "";
+      el("rect", { x: 0, y: i * H, width: sc(Math.min(tt, c)), height: H - 1, fill: i === 37 ? "#e47c93" : "#9cc3ec" }, g);
+      if (tt > c) el("rect", { x: sc(c), y: i * H, width: sc(tt - c), height: H - 1, fill: "url(#stripe)" }, g);
+      const gk = K.rows[i]; gk.innerHTML = ""; let x0 = 0;
+      lanes[i].forEach((d, j) => { if (x0 >= tt) return; const w = Math.min(d, tt - x0); el("rect", { x: sc(x0), y: i * H, width: Math.max(0, sc(w) - (w === d ? .8 : 0)), height: H - 1, fill: i === 37 && j === 0 ? "#e47c93" : PAL[j % 5] }, gk); x0 += d; });
+    });
+    [V, K].forEach(o => { o.tl.setAttribute("x1", sc(tt)); o.tl.setAttribute("x2", sc(tt)); });
+    document.getElementById("rv-t").textContent = tt;
+    document.getElementById("rv-a").textContent = costs.filter(c => c > tt).length;
+    document.getElementById("rv-u").textContent = tt === 0 ? "–" : Math.round(100 * costs.reduce((a, c) => a + Math.min(c, tt), 0) / (64 * tt)) + "%";
+    document.getElementById("rk-t").textContent = tt;
+    const fin = lanes.reduce((a, q) => { let x = 0, n = 0; for (const d of q) { x += d; if (x <= tt) n++; } return a + n; }, 0);
+    document.getElementById("rk-d").textContent = fin + (tt >= maxC ? "  (lockstep: 64)" : "");
+  }
+  function reset() { t = 0; V = setup(vs, "v"); K = setup(ks, "k"); draw(); }
+  document.getElementById("r-play").onclick = (ev) => {
+    if (timer) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Race"; return; }
+    if (t >= maxC) reset();
+    ev.target.textContent = "⏸ Pause";
+    timer = setInterval(() => { t += 4; draw(); if (t >= maxC) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Race"; } }, 30);
+  };
+  document.getElementById("r-reset").onclick = () => { if (timer) clearInterval(timer); timer = null; document.getElementById("r-play").textContent = "▶ Race"; reset(); };
+  reset();
+}
+
+// ---------------------------------------------------------------------------
+// Scene 5: the A100
+// ---------------------------------------------------------------------------
+const FAM_COLORS = ["#9cc3ec","#c3c8d6","#f5bf92","#f3d98f","#f6e3a8","#f2b7cb","#c6b5ea","#9fd8cf","#b5e0b4","#b6c9f2","#e9a7bd","#f7cfa6","#a9d8ee"];
+function scene5() {
+  const chip = document.getElementById("chip");
+  const SMC = 12, SMR = 9, SMW = 34, SMH = 26, GAP = 4;
+  chip.setAttribute("viewBox", `0 0 ${SMC * (SMW + GAP) + 8} ${SMR * (SMH + GAP) + 30}`);
+  let warps = 1, slots = [], timer = null, pending = 0, done = 0, resident = 0, launched = 0;
+  const r = rng(3);
+  const famPick = () => { const x = r(); return x < .3 ? 0 : x < .55 ? 1 : x < .66 ? 2 : x < .72 ? 3 : x < .78 ? 8 : x < .86 ? 12 : Math.floor(r() * 13); };
+  function build() {
+    chip.innerHTML = "";
+    el("rect", { x: 0, y: 0, width: SMC * (SMW + GAP) + 8, height: SMR * (SMH + GAP) + 30, rx: 8, fill: "#fafbfd", stroke: "#e3e6ee" }, chip);
+    slots = [];
+    const perSM = warps === 1 ? 32 : 16;
+    for (let s = 0; s < 108; s++) {
+      const gx = 4 + (s % SMC) * (SMW + GAP), gy = 4 + Math.floor(s / SMC) * (SMH + GAP);
+      el("rect", { x: gx, y: gy, width: SMW, height: SMH, rx: 3, fill: "#eef1f8", stroke: s === 0 ? "var(--accent)" : "#e3e6ee", "stroke-width": s === 0 ? 1.5 : 1 }, chip);
+      const cols = 8, rows = 4;
+      for (let k = 0; k < 32; k++) {
+        const usable = k < perSM;
+        const c = el("rect", { x: gx + 2 + (k % cols) * 3.9, y: gy + 2 + Math.floor(k / cols) * 5.4 + (k >= 16 && warps === 4 ? 0 : 0), width: 3.2, height: 4.6, rx: .6, fill: usable ? "#d9e0ee" : "#f6f7fa" }, chip);
+        slots.push({ c, usable, t: 0, fam: -1, sm: s });
+      }
+    }
+    const lab = el("text", { x: 6, y: SMR * (SMH + GAP) + 20, class: "label-id", style: "fill:#8b91a5;font-size:10px" }, chip);
+    lab.textContent = warps === 1 ? "32 resident blocks / SM (Ampere block limit) → 3,456 games in flight" : "4 warps per block: 64-warp limit → 16 blocks / SM → 1,728 games in flight";
+    pending = 4096; done = 0; resident = 0; launched = 0;
+    stats(); drawSM();
+  }
+  function stats() {
+    document.getElementById("c-res").textContent = resident;
+    document.getElementById("c-done").textContent = done;
+    document.getElementById("c-wave").textContent = Math.max(1, Math.ceil(launched / (warps === 1 ? 3456 : 1728)));
+  }
+  function tick() {
+    for (const s of slots) {
+      if (!s.usable) continue;
+      if (s.fam >= 0) { s.t--; if (s.t <= 0) { s.fam = -1; done++; resident--; s.c.setAttribute("fill", "#d9e0ee"); } }
+      if (s.fam < 0 && pending > 0) { pending--; launched++; resident++; s.fam = famPick(); s.t = 14 + Math.floor(r() * 30) + (s.fam === 3 || s.fam === 2 ? 24 : 0); s.c.setAttribute("fill", FAM_COLORS[s.fam]); }
+    }
+    stats(); drawSM();
+    if (done >= 4096) { clearInterval(timer); timer = null; document.getElementById("c-play").textContent = "▶ Run batch"; }
+  }
+  // SM zoom
+  const sm = document.getElementById("sm");
+  function drawSM() {
+    sm.setAttribute("viewBox", "0 0 420 190"); sm.innerHTML = "";
+    el("rect", { x: 1, y: 1, width: 418, height: 188, rx: 8, fill: "#fafbfd", stroke: "var(--accent)" }, sm);
+    const t = el("text", { x: 10, y: 16, class: "label-id", style: "fill:#3f6fa8;font-size:10px" }, sm); t.textContent = "SM 0 · 4 warp schedulers · 64K registers · 192 KB L1/shared";
+    const mine = slots.filter(s => s.sm === 0);
+    for (let q = 0; q < 4; q++) {
+      const qx = 10 + q * 102;
+      el("rect", { x: qx, y: 26, width: 96, height: 122, rx: 5, fill: "#f3f5fa", stroke: "#e3e6ee" }, sm);
+      const l = el("text", { x: qx + 5, y: 38, class: "label-id", style: "font-size:8px" }, sm); l.textContent = "scheduler " + q;
+      for (let k = 0; k < 8; k++) {
+        const s = mine[q * 8 + k];
+        const y = 44 + k * 13;
+        el("rect", { x: qx + 5, y, width: 86, height: 11, rx: 2, fill: !s.usable ? "#f6f7fa" : s.fam >= 0 ? FAM_COLORS[s.fam] : "#d9e0ee", opacity: s.fam >= 0 ? .9 : 1 }, sm);
+        const tx = el("text", { x: qx + 8, y: y + 8.5, class: "label-id", style: "fill:#2a2f3d;font-size:7.5px" }, sm);
+        tx.textContent = !s.usable ? "— warp limit" : s.fam >= 0 ? FAMILIES[s.fam][0] : "free";
+      }
+    }
+    const f = el("text", { x: 10, y: 166, class: "label-id", style: "font-size:9px;fill:#2a2f3d" }, sm);
+    f.textContent = warps === 1 ? "each row = one warp = one game's whole engine step" : "4 warps per game: same scalar code ×4 → in-place writes race";
+    const f2 = el("text", { x: 10, y: 180, class: "label-id", style: "font-size:9px" }, sm);
+    f2.textContent = "different branches per game cost nothing: divergence is between warps";
+  }
+  // memory hierarchy
+  const mem = document.getElementById("mem");
+  mem.setAttribute("viewBox", "0 0 420 150");
+  const levels = [
+    ["registers", "per warp", "bitmask limbs, DFS stack, loop state", "#5fb894"],
+    ["L1 / shared", "192 KB per SM", "recently touched row words", "#6f9fd8"],
+    ["L2 cache", "40 MB, shared", "board tables (KBs) · the whole batch (8 MB) fits", "#a58fd6"],
+    ["HBM2", "40 GB · ~1.5 TB/s", "state rows: 4,096 × 512 × int32", "#e9955a"]];
+  levels.forEach(([n, sz, what, c], i) => {
+    const y = 4 + i * 36, w = 230 + i * 60;
+    el("rect", { x: 210 - w / 2, y, width: w, height: 30, rx: 5, fill: "#fafbfd", stroke: c }, mem);
+    const a = el("text", { x: 210, y: y + 13, class: "label-id", "text-anchor": "middle", style: `fill:${c};font-size:10px` }, mem); a.textContent = `${n} · ${sz}`;
+    const b = el("text", { x: 210, y: y + 25, class: "label-id", "text-anchor": "middle", style: "fill:#555c70;font-size:8.5px" }, mem); b.textContent = what;
+  });
+  document.getElementById("c-play").onclick = (ev) => {
+    if (timer) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Run batch"; return; }
+    if (done >= 4096) build();
+    ev.target.textContent = "⏸ Pause"; timer = setInterval(tick, 70);
+  };
+  document.getElementById("c-reset").onclick = () => { if (timer) clearInterval(timer); timer = null; document.getElementById("c-play").textContent = "▶ Run batch"; build(); };
+  document.querySelectorAll("#c-warps button").forEach(b => b.onclick = () => {
+    warps = +b.dataset.v; document.querySelectorAll("#c-warps button").forEach(x => x.classList.toggle("on", x === b));
+    if (timer) clearInterval(timer); timer = null; document.getElementById("c-play").textContent = "▶ Run batch"; build();
+  });
+  build();
+}
+
+// ---------------------------------------------------------------------------
+// Scene 6: the warp race
+// ---------------------------------------------------------------------------
+function scene6() {
+  const ws = document.getElementById("warps"), cs = document.getElementById("cellsvg"), log = document.getElementById("log6");
+  let nw = 4, t = -1, timer = null;
+  // each warp: load at start, add at start+1, store at start+2; warp 3 lags by 3 cycles
+  const lag = w => (nw === 4 && w === 3 ? 3 : 0);
+  function events() {
+    const ev = []; for (let w = 0; w < nw; w++) { const s = lag(w); ev.push({ t: s, w, op: "load" }, { t: s + 1, w, op: "add" }, { t: s + 2, w, op: "store" }); } return ev.sort((a, b) => a.t - b.t || a.w - b.w);
+  }
+  const T = () => nw === 4 ? 6 : 3;
+  function simulate(upto) {
+    let mem = 5; const reg = {}; const lines = [];
+    for (const e of events()) {
+      if (e.t > upto) break;
+      if (e.op === "load") { reg[e.w] = mem; lines.push(`t${e.t}  warp ${e.w}: load  visits → ${mem}`); }
+      if (e.op === "add") { reg[e.w] += 1; lines.push(`t${e.t}  warp ${e.w}: add   → ${reg[e.w]}`); }
+      if (e.op === "store") { const stale = reg[e.w] !== 6; mem = reg[e.w]; lines.push(`t${e.t}  warp ${e.w}: store visits ← ${reg[e.w]}${stale ? "   ✗ stale!" : ""}`); }
+    }
+    return { mem, lines };
+  }
+  function draw() {
+    ws.setAttribute("viewBox", "0 0 420 200"); ws.innerHTML = "";
+    const cols = T(); const cw = 330 / cols;
+    for (let c = 0; c < cols; c++) { const tx = el("text", { x: 70 + c * cw + cw / 2, y: 14, class: "label-id", "text-anchor": "middle" }, ws); tx.textContent = "cycle " + c; }
+    for (let w = 0; w < nw; w++) {
+      const y = 24 + w * 42;
+      const l = el("text", { x: 4, y: y + 20, class: "label-id", style: "font-size:10px;fill:#2a2f3d" }, ws); l.textContent = `warp ${w}`;
+      const l2 = el("text", { x: 4, y: y + 31, class: "label-id" }, ws); l2.textContent = "32 threads";
+      for (const e of events().filter(e => e.w === w)) {
+        const x = 70 + e.t * cw;
+        const color = e.op === "load" ? "#7cc4e8" : e.op === "add" ? "#f1c75b" : (w === 3 && nw === 4 ? "var(--hot)" : "var(--ok)");
+        el("rect", { x: x + 2, y, width: cw - 4, height: 34, rx: 5, fill: e.t <= t ? color : "#f5f6fa", stroke: color, opacity: e.t <= t ? 1 : .6 }, ws);
+        const tx = el("text", { x: x + cw / 2, y: y + 21, class: "label-id", "text-anchor": "middle", style: `font-size:10px;fill:${e.t <= t ? "#2a2f3d" : "#8b91a5"}` }, ws); tx.textContent = e.op;
+      }
+    }
+    if (t >= 0) el("line", { x1: 70 + (t + 1) * cw, y1: 18, x2: 70 + (t + 1) * cw, y2: 196, stroke: "var(--hot)", "stroke-dasharray": "3 3" }, ws);
+    const { mem, lines } = simulate(t);
+    cs.setAttribute("viewBox", "0 0 420 80"); cs.innerHTML = "";
+    const done = t >= T() - 1;
+    el("rect", { x: 140, y: 8, width: 140, height: 50, rx: 8, fill: "#fafbfd", stroke: done ? (mem === 6 ? "var(--ok)" : "var(--hot)") : "var(--accent)", "stroke-width": 2 }, cs);
+    const v = el("text", { x: 210, y: 40, "text-anchor": "middle", style: `font:700 26px JetBrains Mono, monospace;fill:${done ? (mem === 6 ? "var(--ok)" : "var(--hot)") : "#2a2f3d"}` }, cs); v.textContent = mem;
+    const k = el("text", { x: 210, y: 74, "text-anchor": "middle", class: "label-id", style: "font-size:10px" }, cs); k.textContent = done ? (mem === 6 ? "expected 5 + 1 = 6 ✓" : "expected 6: one visit counted twice ✗") : "start: 5 (one backup should make it 6)";
+    log.innerHTML = lines.map(l => `<div class="cur">${l}</div>`).join("");
+    document.getElementById("w-step").textContent = t < 0 ? "ready" : `cycle ${t} / ${T() - 1}`;
+  }
+  document.getElementById("w-next").onclick = () => { t = Math.min(t + 1, T() - 1); draw(); };
+  document.getElementById("w-reset").onclick = () => { t = -1; draw(); };
+  document.getElementById("w-play").onclick = (ev) => {
+    if (timer) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Play"; return; }
+    if (t >= T() - 1) t = -1;
+    ev.target.textContent = "⏸ Pause"; timer = setInterval(() => { if (t >= T() - 1) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Play"; return; } t++; draw(); }, 900);
+  };
+  document.querySelectorAll("#w-mode button").forEach(b => b.onclick = () => {
+    nw = +b.dataset.v; document.querySelectorAll("#w-mode button").forEach(x => x.classList.toggle("on", x === b)); t = -1; draw();
+  });
+  draw();
+}
+
+[scene1, scene2, scene3, scene4, scene5, scene6].forEach(f => f());
+</script>
+</body>
+</html>

@@ -226,7 +226,43 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 </figure>
 
 <div class="l-text">
-  <h2><span class="num">4</span>What the A100 is actually doing</h2>
+  <h2><span class="num">4</span>Search only through the new road</h2>
+  <p>Profiling the fused kernel showed longest road eating about 85% of a late-game launch again. At batch 1,024 every game fits on the A100 in a single wave, so the launch takes as long as its slowest game, and that is whichever game just built a road onto the biggest network. The kernel was running the full search from every node of that network on <i>every</i> road build.</p>
+  <p>It didn't need to. Building a road can only create trails that <b>use the new road</b>: every other trail existed before. So the new longest road is <code>max(old length, longest trail through the new edge)</code>, and only a settlement that cuts a road needs a full recompute. The reference engine already did this (<code>catan._longest_trail_through</code>); the fast kernel was using the slow algorithm.</p>
+  <p>The new road can sit in the middle of the longest trail, so the search grows <b>two arms</b>, one from each end of the edge, without reusing a road. To count each trail once (not once per interleaving of its two arms) it extends arm A first, takes a single "switch" that closes A, then extends arm B. Step through it on Orange joining two chains:</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Orange builds the road joining its two chains</h3><svg id="board5" class="board-svg"></svg></div>
+    <div class="panel">
+      <h3>Two-arm search through the new road</h3>
+      <div class="kv" id="through-kv"></div>
+      <h3 style="margin-top:14px">Stack (top first)</h3>
+      <div class="log" id="through-stack" style="height:250px"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="t-reset">⟲ Reset</button><button id="t-next">Step ▶</button><button id="t-play">▶ Play</button>
+    <span class="step-label" id="t-step"></span>
+  </div></div>
+  <figcaption><b>Figure 5.</b> The two-arm search the kernel now runs for road builds, rooted at the new edge (dashed). Violet = arm A, grown first from one end; teal = arm B, grown after the switch from the other end. It visits only trails that contain the new road; the counter compares it with the full search the kernel used to run on the same board. Same algorithm as <code>catan._longest_trail_through</code>, bit-exact with the reference engine.</figcaption>
+</figure>
+
+<div class="l-text">
+  <p>Ported into the Pallas kernel, with the full search kept only for road cuts, it was bit-exact on every parity test and on 196,608 games forced to build a road or a settlement. The same profiling also pointed at the <b>legal-action mask</b>, still plain XLA: 27 separate GPU kernels for a few dozen comparisons per game, a flat 0.1 ms per batch. Rewritten as one Pallas program per game (one vector over the 294 action ids, gathering straight from the state row), it is about 5× faster and also bit-exact.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Engine step · colonist · ms per 1,024-game step</h3><svg id="time-step"></svg></div>
+    <div class="panel"><h3>Whole simulation step (engine step + legal mask)</h3><svg id="time-total"></svg></div>
+  </div></div>
+  <figcaption><b>Figure 6.</b> Measured on an A100 (GPU device time, median of 3 separate processes; no neural network). Left: the plain XLA engine, the fused kernel with the original longest-road search, and the fused kernel searching only through the new road: 1.9× faster late game, 7–12× faster than XLA overall. Right: the whole simulation step before (XLA legal mask + original fused step) and after (Pallas mask + new fused step): 1.7–2.3× faster at every stage.</figcaption>
+</figure>
+
+<div class="l-text">
+  <h2><span class="num">5</span>What the A100 is actually doing</h2>
   <p>With one program per game, each game runs as a single <b>warp</b>: 32 threads executing the same scalar engine code. Branches inside a program are real, because the whole warp agrees on which action it's applying. Different games taking different branches costs nothing, because that divergence is <i>between</i> warps, not within one.</p>
   <p>An A100 has 108 streaming multiprocessors (SMs). Ampere allows at most 32 resident blocks per SM, so with one-warp blocks about 3,456 games are in flight at once, and a 4,096-game batch runs in about 1.2 waves. The batch's entire state is 4,096 × 2 KB = 8 MB, which fits in the 40 MB L2 cache.</p>
 </div>
@@ -250,11 +286,11 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="c-warps"><button data-v="1" class="on">num_warps = 1</button><button data-v="4">num_warps = 4</button></span>
     <span class="step-label">colors = action family each game is executing</span>
   </div></div>
-  <figcaption><b>Figure 5.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 6) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
+  <figcaption><b>Figure 7.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 8) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
 </figure>
 
 <div class="l-text">
-  <h2><span class="num">5</span>The bug that only appeared at batch 4,096</h2>
+  <h2><span class="num">6</span>The bug that only appeared at batch 4,096</h2>
   <p>A Pallas program on Triton compiles to <code>num_warps × 32</code> threads, with a default of four warps. Engine code is scalar, so every thread redundantly performs the same load, add and store to the same address. Within one warp that happens in lockstep and is harmless. But warps are scheduled independently. A lagging warp can load a value a faster warp has already incremented, and write back a doubled result.</p>
   <p>In the engine kernel this corrupted about 11 of 4,096 games, different ones on every run, and never showed up at the batch sizes used during development. The fix, <code>num_warps=1</code>, is a correctness requirement for any kernel that updates memory in place.</p>
 </div>
@@ -273,11 +309,11 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="w-mode"><button data-v="4" class="on">num_warps = 4</button><button data-v="1">num_warps = 1</button></span>
     <span class="step-label" id="w-step"></span>
   </div></div>
-  <figcaption><b>Figure 6.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">open question: catanax's search backup and expand-write kernels still use the default four warps</span></figcaption>
+  <figcaption><b>Figure 8.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">checked: the search backup and expand-write kernels reproduced no race with four warps (0 of 4,096 lanes over 6 repeats)</span></figcaption>
 </figure>
 
 <footer>
-  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3 and 5 are schematics, not measurements.
+  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3 and 7 are schematics, not measurements.
 </footer>
 <script>
 // ---------------------------------------------------------------------------
@@ -1006,7 +1042,153 @@ function scene6() {
   draw();
 }
 
-[scene1, scene2, scene3, scene4, scene5, scene6].forEach(f => f());
+
+// ---------------------------------------------------------------------------
+// Scene: two-arm search through the built road (catan._longest_trail_through)
+// ---------------------------------------------------------------------------
+const BUILT_EDGE = 18;  // Orange joins 4-3-2-9 and 10-11-32-31 (+ branch 10-29)
+function throughState(built) {
+  const st = makeState(false);
+  st.edge_owner[20] = ORANGE;  // a branch at node 10
+  st.edge_owner[BUILT_EDGE] = built ? ORANGE : -1;
+  st.node_in_component[ORANGE * 54 + 29] = 1;
+  return st;
+}
+function throughTrace(st, player, edge) {
+  const owned = st.edge_owner.map(o => o === player);
+  const enemy = st.node_owner.map(o => o >= 0 && o !== player);
+  const comp = n => st.node_in_component[player * 54 + n] > 0;
+  const [u, v] = EDGE_NODES[edge];
+  const baseOk = !(enemy[u] && enemy[v]) && (!enemy[u] || comp(u)) && (!enemy[v] || comp(v));
+  let stack = baseOk ? [{ a: u, b: v, closed: enemy[u], ae: enemy[u], be: enemy[v], used: new Set([edge]), len: 1, armA: [], armB: [] }] : [];
+  let best = baseOk ? 1 : 0;
+  const frames = [{ kind: "seed", stack: stack.slice(), best }];
+  const options = (tip, used) => [0, 1, 2].map(k => {
+    const e = NODE_EDGES[tip][k], w = NODE_NEIGHBORS[tip][k];
+    return { e, w, ok: e >= 0 && owned[e] && !used.has(e), we: w >= 0 && enemy[w] };
+  });
+  while (stack.length) {
+    const f = stack.pop();
+    const pushes = [];
+    let grew = false;
+    for (const o of options(f.a, f.used)) {
+      const can = o.ok && !f.closed && (!o.we || (comp(o.w) && !f.be));
+      if (can) { pushes.push({ a: o.w, b: f.b, closed: o.we, ae: o.we || f.ae, be: f.be, used: new Set([...f.used, o.e]), len: f.len + 1, armA: [...f.armA, o.e], armB: f.armB, phase: "A" }); grew = true; }
+    }
+    if (!f.closed) pushes.push({ ...f, closed: true, used: new Set(f.used), phase: "switch" });
+    for (const o of options(f.b, f.used)) {
+      const open = o.ok && f.closed && !f.be;
+      const can = open && !o.we, ends = open && o.we && comp(o.w) && !f.ae;
+      if (can) pushes.push({ a: f.a, b: o.w, closed: true, ae: f.ae, be: o.we, used: new Set([...f.used, o.e]), len: f.len + 1, armA: f.armA, armB: [...f.armB, o.e], phase: "B" });
+      if (can || ends) grew = true;
+    }
+    pushes.forEach(x => stack.push(x));
+    if (grew) best = Math.max(best, f.len + 1);
+    frames.push({ kind: "pop", popped: f, pushes, stack: stack.slice(), best });
+  }
+  return frames;
+}
+function sceneThrough() {
+  const st = throughState(true);
+  const B = drawBoard(document.getElementById("board5"), { labels: true });
+  const frames = throughTrace(st, ORANGE, BUILT_EDGE);
+  const fullTrace = dfsTrace(st, ORANGE).frames;
+  const fullPops = fullTrace.length - 1;
+  const fullBest = fullTrace[fullTrace.length - 1].best;
+  const preTrace = dfsTrace(throughState(false), ORANGE).frames;
+  const oldBest = preTrace[preTrace.length - 1].best;
+  const kv = document.getElementById("through-kv"), stackEl = document.getElementById("through-stack");
+  let f = 0, timer = null;
+  const ARM_A = "#a58fd6", ARM_B = "#5fb894";
+  function draw() {
+    const fr = frames[f];
+    renderPieces(B, st);
+    B.nodes.forEach(n => n.classList.remove("hl"));
+    B.roads.forEach((r, e) => { r.style.opacity = st.edge_owner[e] === BLUE ? 0.25 : 1; r.setAttribute("stroke-width", 6.5); r.removeAttribute("stroke-dasharray"); });
+    const built = B.roads[BUILT_EDGE];
+    built.setAttribute("stroke-dasharray", "4 3"); built.setAttribute("stroke-width", 9);
+    const cur = fr.kind === "pop" ? fr.popped : (fr.stack[0] || null);
+    if (cur) {
+      cur.armA.forEach(e => { B.roads[e].setAttribute("stroke", ARM_A); B.roads[e].setAttribute("stroke-width", 9); });
+      cur.armB.forEach(e => { B.roads[e].setAttribute("stroke", ARM_B); B.roads[e].setAttribute("stroke-width", 9); });
+      B.nodes[cur.a].classList.add("hl"); B.nodes[cur.b].classList.add("hl");
+    }
+    const pops = f;
+    kv.innerHTML = `<div>new road</div><div class="mono">edge ${BUILT_EDGE} (nodes ${EDGE_NODES[BUILT_EDGE].join("–")})</div>
+      <div>search steps</div><div class="mono">${pops} of ${frames.length - 1} (two-arm)</div>
+      <div>full search</div><div class="mono">${fullPops} steps on this board</div>
+      <div>current</div><div class="mono">${cur ? `A tip ${cur.a}, B tip ${cur.b}, ${cur.closed ? "A closed" : "A open"}, ${cur.len} road${cur.len > 1 ? "s" : ""}` : "–"}</div>
+      <div>best through the new road</div><div class="mono" style="color:#2f7a5c;font-weight:600">${fr.best}</div>
+      <div>new longest road</div><div class="mono">max(old ${oldBest}, ${fr.best}) = ${Math.max(oldBest, fr.best)}${f === frames.length - 1 ? (Math.max(oldBest, fr.best) === fullBest ? " ✓ same as the full search" : " ✗ differs from the full search") : ""}</div>`;
+    stackEl.innerHTML = fr.stack.slice().reverse().map((x, i) =>
+      `<div class="${i === 0 ? "cur" : ""}">${x.phase === "switch" ? "switch → " : x.phase ? x.phase + " grew → " : "seed → "}A tip ${x.a} · B tip ${x.b} · ${x.closed ? "A closed" : "A open"} · ${x.len}</div>`).join("") || "<div>(empty: search done)</div>";
+    document.getElementById("t-step").textContent = fr.kind === "seed" ? "seed: the new road itself, length 1" : `pop A tip ${fr.popped.a} / B tip ${fr.popped.b} → ${fr.pushes.length} push${fr.pushes.length === 1 ? "" : "es"}`;
+  }
+  document.getElementById("t-next").onclick = () => { f = Math.min(f + 1, frames.length - 1); draw(); };
+  document.getElementById("t-reset").onclick = () => { f = 0; draw(); };
+  document.getElementById("t-play").onclick = ev => {
+    if (timer) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Play"; return; }
+    if (f >= frames.length - 1) f = 0;
+    ev.target.textContent = "⏸ Pause";
+    timer = setInterval(() => { if (f >= frames.length - 1) { clearInterval(timer); timer = null; ev.target.textContent = "▶ Play"; return; } f++; draw(); }, 700);
+  };
+  draw();
+}
+
+// ---------------------------------------------------------------------------
+// Scene: measured timings (A100, GPU device time, medians of 3 processes)
+// ---------------------------------------------------------------------------
+const TIMING = {
+  stages: ["opening", "30 plies", "120 plies", "300 plies"],
+  colonist: {
+    xla: [0.790, 0.843, 0.799, 1.030], original: [0.063, 0.094, 0.129, 0.276], fresh: [0.064, 0.092, 0.114, 0.142],
+    maskXla: [0.114, 0.112, 0.090, 0.088], maskPallas: [0.020, 0.021, 0.017, 0.017],
+  },
+};
+function barChart(svg, groups, series, { unit = "ms", annotate } = {}) {
+  const W = 470, H = 300, left = 40, bottom = 34, top = 34;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
+  const max = Math.max(...series.flatMap(s => s.values)) * 1.12;
+  const y = v => H - bottom - (v / max) * (H - bottom - top);
+  for (let t = 0; t <= 4; t++) {
+    const v = (max / 4) * t;
+    el("line", { x1: left, x2: W - 6, y1: y(v), y2: y(v), stroke: "#eceff6" }, svg);
+    el("text", { x: left - 6, y: y(v) + 3, class: "label-id", "text-anchor": "end", style: "font-size:9px" }, svg).textContent = v.toFixed(2);
+  }
+  const gw = (W - left - 10) / groups.length, bw = (gw - 18) / series.length;
+  groups.forEach((g, i) => {
+    const gx = left + 5 + i * gw;
+    series.forEach((s, j) => {
+      const v = s.values[i], x = gx + 6 + j * bw;
+      el("rect", { x, y: y(v), width: bw - 3, height: H - bottom - y(v), rx: 3, fill: s.color }, svg);
+      el("text", { x: x + (bw - 3) / 2, y: y(v) - 3, "text-anchor": "middle", class: "label-id", style: "font-size:8.5px;fill:#555c70" }, svg).textContent = v.toFixed(3);
+    });
+    el("text", { x: gx + gw / 2, y: H - bottom + 15, "text-anchor": "middle", style: "font:500 10.5px Inter, sans-serif;fill:#555c70" }, svg).textContent = g;
+    if (annotate) el("text", { x: gx + gw / 2, y: 18, "text-anchor": "middle", style: "font:700 12px Inter, sans-serif;fill:#2a2f3d" }, svg).textContent = annotate(i);
+  });
+  let lx = left;
+  series.forEach(s => {
+    el("rect", { x: lx, y: H - 12, width: 10, height: 10, rx: 2, fill: s.color }, svg);
+    el("text", { x: lx + 14, y: H - 3, style: "font:500 10px Inter, sans-serif;fill:#555c70" }, svg).textContent = s.name;
+    lx += 14 + s.name.length * 5.4 + 16;
+  });
+}
+function sceneTiming() {
+  const c = TIMING.colonist;
+  barChart(document.getElementById("time-step"), TIMING.stages, [
+    { name: "XLA engine", values: c.xla, color: "#9cc3ec" },
+    { name: "fused, full search", values: c.original, color: "#f5bf92" },
+    { name: "fused, through new road", values: c.fresh, color: "#5fb894" },
+  ], { annotate: i => `${(c.original[i] / c.fresh[i]).toFixed(2)}×` });
+  const before = c.original.map((v, i) => v + c.maskXla[i]);
+  const after = c.fresh.map((v, i) => v + c.maskPallas[i]);
+  barChart(document.getElementById("time-total"), TIMING.stages, [
+    { name: "before (XLA mask + full search)", values: before, color: "#f5bf92" },
+    { name: "after (Pallas mask + new road)", values: after, color: "#5fb894" },
+  ], { annotate: i => `${(before[i] / after[i]).toFixed(1)}×` });
+}
+
+[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, scene5, scene6].forEach(f => f());
 </script>
 </body>
 </html>

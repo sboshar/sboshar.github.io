@@ -256,11 +256,25 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 <figure class="l-wide"><div class="frame">
   <div class="split">
     <div class="panel"><h3>Engine step · colonist · ms per 1,024-game step</h3><svg id="time-step"></svg></div>
-    <div class="panel"><h3>Whole simulation step (engine step + legal mask)</h3><svg id="time-total"></svg></div>
+    <div class="panel"><h3>Whole simulation step (engine step + legal mask) · colonist</h3><svg id="time-total"></svg></div>
   </div></div>
-  <figcaption><b>Figure 6.</b> Measured on an A100 (GPU device time, median of 3 separate processes; no neural network). Left: the plain XLA engine, the fused kernel with the original longest-road search, and the fused kernel searching only through the new road: 1.9× faster late game, 7–12× faster than XLA overall. Right: the whole simulation step before (XLA legal mask + original fused step) and after (Pallas mask + new fused step): 1.7–2.3× faster at every stage.</figcaption>
+  <figcaption><b>Figure 6.</b> Measured on an A100 (GPU device time, median of 3 separate processes; no neural network; everything bit-exact). Left: the engine step alone: the plain XLA engine, the fused kernel with the original longest-road search, and the fused kernel searching only through the new road (bold: new vs original, 1.9× late game). Right: the whole simulation step, each pipeline compiled as one function (step, then the legal mask of the new state): pure XLA, the previous fused pipeline (full search + XLA mask), and the new one (search through the new road + Pallas mask). Bold: new vs previous, 1.5–2.2× at every stage and 5–9× faster than pure XLA.</figcaption>
 </figure>
 
+
+<div class="l-text">
+  <p>With both fixes in, here is where a simulation step's time goes now. The legal mask shrinks from about half of the step to a tenth, longest road shrinks to a sliver except in the biggest late-game networks, and the <b>chance presample</b> (drawing the dice and steals in plain XLA before the kernel runs) is suddenly the largest part. That's the next target.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="panel"><h3>Simulation step, part by part · before vs after both fixes</h3></div>
+  <svg id="breakdown-chart"></svg>
+  <div class="controls">
+    <span class="toggle" id="bd-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
+    <span class="step-label">hover a segment for its time</span>
+  </div></div>
+  <figcaption><b>Figure 7.</b> One step for 1,024 games, no network, GPU device time on an A100. Left bar of each pair = before (XLA legal mask + full longest-road search), right = after (Pallas mask + search through the new road). Kernel parts are attributed by switching them off. Labels give the total and the largest part's share.</figcaption>
+</figure>
 <div class="l-text">
   <h2><span class="num">5</span>What the A100 is actually doing</h2>
   <p>With one program per game, each game runs as a single <b>warp</b>: 32 threads executing the same scalar engine code. Branches inside a program are real, because the whole warp agrees on which action it's applying. Different games taking different branches costs nothing, because that divergence is <i>between</i> warps, not within one.</p>
@@ -286,7 +300,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="c-warps"><button data-v="1" class="on">num_warps = 1</button><button data-v="4">num_warps = 4</button></span>
     <span class="step-label">colors = action family each game is executing</span>
   </div></div>
-  <figcaption><b>Figure 7.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 8) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
+  <figcaption><b>Figure 8.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 9) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
 </figure>
 
 <div class="l-text">
@@ -309,11 +323,11 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="w-mode"><button data-v="4" class="on">num_warps = 4</button><button data-v="1">num_warps = 1</button></span>
     <span class="step-label" id="w-step"></span>
   </div></div>
-  <figcaption><b>Figure 8.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">checked: the search backup and expand-write kernels reproduced no race with four warps (0 of 4,096 lanes over 6 repeats)</span></figcaption>
+  <figcaption><b>Figure 9.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">checked: the search backup and expand-write kernels reproduced no race with four warps (0 of 4,096 lanes over 6 repeats)</span></figcaption>
 </figure>
 
 <footer>
-  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3 and 7 are schematics, not measurements.
+  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3 and 8 are schematics, not measurements.
 </footer>
 <script>
 // ---------------------------------------------------------------------------
@@ -1142,9 +1156,11 @@ const TIMING = {
   stages: ["opening", "30 plies", "120 plies", "300 plies"],
   colonist: {
     xla: [0.790, 0.843, 0.799, 1.030], original: [0.063, 0.094, 0.129, 0.276], fresh: [0.064, 0.092, 0.114, 0.142],
-    maskXla: [0.114, 0.112, 0.090, 0.088], maskPallas: [0.020, 0.021, 0.017, 0.017],
+    // Whole step (one jitted function: step, then legal mask of the new state).
+    totalXla: [0.836, 0.859, 0.912, 1.128], totalOriginal: [0.198, 0.243, 0.244, 0.371], totalNew: [0.090, 0.138, 0.168, 0.204],
   },
 };
+const BREAKDOWN = {"colonist": {"before": {"opening": {"legal mask": 0.1121, "presample (dice, steal)": 0.0559, "kernel core (appliers + finish)": 0.0245, "road-cut walk": 0.0001, "longest road search": 0.0031}, "30 plies": {"legal mask": 0.1132, "presample (dice, steal)": 0.0883, "kernel core (appliers + finish)": 0.0393, "road-cut walk": 0.0, "longest road search": 0.0071}, "120 plies": {"legal mask": 0.1249, "presample (dice, steal)": 0.088, "kernel core (appliers + finish)": 0.0418, "road-cut walk": 0.0, "longest road search": 0.0527}, "300 plies": {"legal mask": 0.0985, "presample (dice, steal)": 0.0703, "kernel core (appliers + finish)": 0.0411, "road-cut walk": 0.001, "longest road search": 0.2418}}, "after": {"opening": {"legal mask": 0.0206, "presample (dice, steal)": 0.0557, "kernel core (appliers + finish)": 0.0251, "road-cut walk": 0.0, "longest road search": 0.0038}, "30 plies": {"legal mask": 0.0205, "presample (dice, steal)": 0.0892, "kernel core (appliers + finish)": 0.0391, "road-cut walk": 0.0, "longest road search": 0.0038}, "120 plies": {"legal mask": 0.0227, "presample (dice, steal)": 0.0893, "kernel core (appliers + finish)": 0.0426, "road-cut walk": 0.0, "longest road search": 0.0357}, "300 plies": {"legal mask": 0.0225, "presample (dice, steal)": 0.0891, "kernel core (appliers + finish)": 0.0414, "road-cut walk": 0.0, "longest road search": 0.0711}}}, "catanatron": {"before": {"opening": {"legal mask": 0.1109, "presample (dice, steal)": 0.0568, "kernel core (appliers + finish)": 0.0239, "road-cut walk": 0.0003, "longest road search": 0.0033}, "30 plies": {"legal mask": 0.1131, "presample (dice, steal)": 0.0677, "kernel core (appliers + finish)": 0.0391, "road-cut walk": 0.0, "longest road search": 0.0143}, "120 plies": {"legal mask": 0.1127, "presample (dice, steal)": 0.0721, "kernel core (appliers + finish)": 0.0375, "road-cut walk": 0.0008, "longest road search": 0.0497}, "300 plies": {"legal mask": 0.1246, "presample (dice, steal)": 0.0724, "kernel core (appliers + finish)": 0.0406, "road-cut walk": 0.0, "longest road search": 0.1137}}, "after": {"opening": {"legal mask": 0.0204, "presample (dice, steal)": 0.0568, "kernel core (appliers + finish)": 0.0237, "road-cut walk": 0.0, "longest road search": 0.0045}, "30 plies": {"legal mask": 0.0212, "presample (dice, steal)": 0.0666, "kernel core (appliers + finish)": 0.0382, "road-cut walk": 0.0003, "longest road search": 0.0108}, "120 plies": {"legal mask": 0.0206, "presample (dice, steal)": 0.0721, "kernel core (appliers + finish)": 0.0374, "road-cut walk": 0.0003, "longest road search": 0.0285}, "300 plies": {"legal mask": 0.0222, "presample (dice, steal)": 0.072, "kernel core (appliers + finish)": 0.04, "road-cut walk": 0.0, "longest road search": 0.0803}}}};
 function barChart(svg, groups, series, { unit = "ms", annotate } = {}) {
   const W = 470, H = 300, left = 40, bottom = 34, top = 34;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
@@ -1180,15 +1196,64 @@ function sceneTiming() {
     { name: "fused, full search", values: c.original, color: "#f5bf92" },
     { name: "fused, through new road", values: c.fresh, color: "#5fb894" },
   ], { annotate: i => `${(c.original[i] / c.fresh[i]).toFixed(2)}×` });
-  const before = c.original.map((v, i) => v + c.maskXla[i]);
-  const after = c.fresh.map((v, i) => v + c.maskPallas[i]);
   barChart(document.getElementById("time-total"), TIMING.stages, [
-    { name: "before (XLA mask + full search)", values: before, color: "#f5bf92" },
-    { name: "after (Pallas mask + new road)", values: after, color: "#5fb894" },
-  ], { annotate: i => `${(before[i] / after[i]).toFixed(1)}×` });
+    { name: "pure XLA", values: c.totalXla, color: "#9cc3ec" },
+    { name: "previous fused", values: c.totalOriginal, color: "#f5bf92" },
+    { name: "new (road + Pallas mask)", values: c.totalNew, color: "#5fb894" },
+  ], { annotate: i => `${(c.totalOriginal[i] / c.totalNew[i]).toFixed(1)}×` });
 }
 
-[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, scene5, scene6].forEach(f => f());
+function sceneBreakdown() {
+  const PARTS = [
+    ["legal mask", "#9cc3ec"], ["presample (dice, steal)", "#f5bf92"], ["kernel core (appliers + finish)", "#9fd8bd"],
+    ["road-cut walk", "#f3d98f"], ["longest road search", "#f2b7cb"]];
+  const svg = document.getElementById("breakdown-chart");
+  function draw(rules) {
+    const d = BREAKDOWN[rules], stages = TIMING.stages;
+    const W = 980, H = 360, left = 46, bottom = 40, top = 30;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
+    const totals = c => stages.map(st => PARTS.reduce((a, [p]) => a + d[c][st][p], 0));
+    const max = Math.max(...totals("before"), ...totals("after")) * 1.28;
+    const y = v => H - bottom - (v / max) * (H - bottom - top);
+    for (let t = 0; t <= 4; t++) {
+      const v = (max / 4) * t;
+      el("line", { x1: left, x2: W - 200, y1: y(v), y2: y(v), stroke: "#eceff6" }, svg);
+      el("text", { x: left - 6, y: y(v) + 3, class: "label-id", "text-anchor": "end", style: "font-size:9.5px" }, svg).textContent = v.toFixed(2) + " ms";
+    }
+    const gw = (W - 200 - left) / stages.length, bw = 64;
+    stages.forEach((st, i) => {
+      const cx = left + gw * (i + 0.5);
+      ["before", "after"].forEach((cfg, k) => {
+        const x = cx - bw - 6 + k * (bw + 12);
+        let acc = 0;
+        PARTS.forEach(([p, color]) => {
+          const v = d[cfg][st][p];
+          if (v <= 0) return;
+          const r = el("rect", { x, y: y(acc + v), width: bw, height: Math.max(0, y(acc) - y(acc + v) - 1.5), rx: 2, fill: color }, svg);
+          el("title", {}, r).textContent = `${cfg}, ${st}: ${p} = ${v.toFixed(3)} ms`;
+          acc += v;
+        });
+        const big = PARTS.map(([p]) => p).reduce((a, b) => (d[cfg][st][b] > d[cfg][st][a] ? b : a));
+        const short = { "legal mask": "mask", "presample (dice, steal)": "presample", "kernel core (appliers + finish)": "core", "road-cut walk": "cut walk", "longest road search": "longest road" }[big];
+        el("text", { x: x + bw / 2, y: y(acc) - 18, "text-anchor": "middle", style: "font:600 10px Inter, sans-serif;fill:#2a2f3d" }, svg).textContent = `${acc.toFixed(3)} ms`;
+        el("text", { x: x + bw / 2, y: y(acc) - 6, "text-anchor": "middle", style: "font:500 9px Inter, sans-serif;fill:#8b91a5" }, svg).textContent = `${short} ${Math.round(100 * d[cfg][st][big] / acc)}%`;
+        el("text", { x: x + bw / 2, y: H - bottom + 13, "text-anchor": "middle", style: "font:500 9.5px Inter, sans-serif;fill:#8b91a5" }, svg).textContent = cfg;
+      });
+      el("text", { x: cx, y: H - bottom + 29, "text-anchor": "middle", style: "font:600 11px Inter, sans-serif;fill:#555c70" }, svg).textContent = st;
+    });
+    PARTS.slice().reverse().forEach(([p, color], i) => {
+      el("rect", { x: W - 186, y: top + 10 + i * 22, width: 12, height: 12, rx: 3, fill: color }, svg);
+      el("text", { x: W - 168, y: top + 20 + i * 22, style: "font:500 11px Inter, sans-serif;fill:#555c70" }, svg).textContent = p;
+    });
+  }
+  document.querySelectorAll("#bd-rules button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("#bd-rules button").forEach(x => x.classList.toggle("on", x === b));
+    draw(b.dataset.v);
+  });
+  draw("colonist");
+}
+
+[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, sceneBreakdown, scene5, scene6].forEach(f => f());
 </script>
 </body>
 </html>

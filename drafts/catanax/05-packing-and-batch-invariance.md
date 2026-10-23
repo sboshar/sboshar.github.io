@@ -46,7 +46,7 @@
   | **40% (shipped)** | 2.21 | **2.00** |
 
 - Lesson: size the buffer for the usual case, from measured fractions, rather than for the worst case or for tightness.
-- **The dice version didn't pay.** Packing the 11-outcome dice enumeration looked like the next big win, but only **1%** of colonist games (12% catanatron) need it: they have ROLL *and* another candidate. Most games where ROLL is a candidate have *only* ROLL, so they're already skipped. A buffer big enough to be safe cost more than it saved. Dropped.
+- **The dice version, first attempt: a 50% buffer gained 0.9%.** It looked like a dead end, and it was dropped. It wasn't; see Part 2b.
 - **Result:**
 
   | | before | after | speedup |
@@ -55,6 +55,26 @@
   | catanatron | 3,057 games/s | 4,166 games/s | **1.36×** |
   | colonist paper_lite run | 4.0 h | 2.5 h | |
   | catanatron paper_lite run | 2.1 h | 1.55 h | |
+
+## Part 2b: the dice, done right (#147)
+- **The waste:** every step built and scored all 11 dice outcomes for every game: 2,048 × 11 = 22,528 positions, about 30% of a colonist step. The expectation only matters where ROLL competes with another candidate: **~1% of colonist games, ~12% of catanatron**.
+- **Why the first attempt (a 50% buffer) gained 0.9%: the work is launch-bound.** The value net on 132 rows costs 0.12 ms; on 22,528 rows, 0.79 ms (170× the rows, 6.4× the time). A chunk costs a fixed ~0.15 ms plus ~0.35 µs per game, so a buffer of 1,024 games for ~20 that need it still pays about two thirds of the full price. It also broke XLA's merge of the dice and root-prior matmuls, which share weights.
+- **The engine half is as big as the network half:** building the 11 outcome positions (`roll_outcomes` + observe) costs 1.0 ms on colonist (balanced dice redo the bag, window and seven-streak bookkeeping per outcome) vs 0.77 ms for the network. Packing removes both.
+- **Buffer size per rule set:**
+
+  | Chunk (fraction of games) | colonist | catanatron |
+  |---|---|---|
+  | 2% | **−18.7%** | +17.6% (slower: ~6 chunks per step) |
+  | 15% | −15.1% | **−19.8%** |
+  | chosen per step (buckets 16/64/256/512) | −16.3% | −16.4% |
+  | dice enumeration off (upper bound) | −27.5% | −32.8% |
+
+- **Adaptive sizing lost to a fixed size:** `lax.switch` over buckets makes XLA copy the branch index to the host and wait before launching. A per-recipe config field (`dice_capacity` 0.02 colonist, 0.15 catanatron) won.
+- **Result:** one-ply self-play −19% (colonist) and −20% (catanatron) per step. Colonist paper_lite 2.34 → 1.93 h, catanatron 1.43 → 1.16 h.
+- **A third 1-ulp story:** `(values × probs).sum(-1)` came out 1 ulp apart in the packed and unpacked programs, though each stage matched on its own. The cause was fusion context (an FMA in one program, a separate multiply and add in the other), not batch size. Fix: a barrier on the products and a fixed-order sum. Colonist's Q rescaling amplified the ulp into policy targets, as in Part 4.
+- **A fourth one: a compiler pass that merges calls changes their size.** The colonist real-net check still failed, even at the opening where no game can roll. Bisecting the search op's intermediates: the root priors differed first, by 1 bf16 ulp. XLA's `dot-merger` had concatenated the root-prior call with the all-games dice call (they share weights). Packing the dice into a loop broke the merge, so the root call ran at its own row count and rounded differently. Fix: disable `dot-merger` in the self-play compile options, next to `splitk-rewriter`; free on all three arms. The first guess (colonist's dice odds rounding by fusion context) was tested and wrong.
+  - And the test itself had to move from batch 32 to batch 128: the batch-invariant compile is exact from 128 rows, and at batch 32 the root call is 32 rows.
+- Lesson: **a negative result from one buffer size is not a negative result for the idea.** Measure the cost curve (fixed vs per-row) before sizing a buffer.
 
 ## Part 3: "bit-identical to main" failed
 - **The check:** tiny self-play (32 games × 24 steps, fixed seeds), main vs branch.

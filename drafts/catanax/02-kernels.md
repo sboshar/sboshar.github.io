@@ -159,6 +159,10 @@
 - emit the legal mask (and maybe the observation) from the engine kernel, as pgx does
 - longest road: seed the DFS only from nodes whose degree ≠ 2 (exact; fewer duplicates; lower stack occupancy)
 
+## Epilogue: the network was the next problem (see 05)
+- packing one-ply candidates (only 21–35% of slots matter) gave 1.36–1.57× self-play
+- it surfaced batch-size-dependent network numerics; that story is post 05
+
 ## Lessons to box
 - profile the whole pipeline, not just the kernel
 - verify the constraint list before designing around it

@@ -9,7 +9,8 @@ not publish them.
 | [01-problem-setup.md](01-problem-setup.md) | bullet outline: problem overview and formulation |
 | [02-kernels.md](02-kernels.md) | bullet outline: vectorizing the engine, what's clever in the kernels, speedups |
 | [03-optimal-compute.md](03-optimal-compute.md) | bullet outline: K/R/D rollout scaling, Pareto front, optimal allocation |
+| [05-packing-and-batch-invariance.md](05-packing-and-batch-invariance.md) | bullet outline: one-ply search packing only the candidates that matter (#144), and the three XLA effects that made a row's network output depend on its batch neighbours |
 | [04-other-post-ideas.md](04-other-post-ideas.md) | titles + one-line ideas for the remaining posts |
-| [viz/catan-to-kernel.html](viz/catan-to-kernel.html) | interactive Distill-style draft: board → row, one move in the kernel, longest road, the A100, the warp race |
+| [viz/catan-to-kernel.html](viz/catan-to-kernel.html) | interactive Distill-style draft: board → row, one move in the kernel, longest road, the A100, the warp race, packing candidates, batch-size dependence of the network |
 | [kernel-improvement-ideas.md](kernel-improvement-ideas.md) | notes from reading the engine kernel: latency diagnosis + six improvement ideas |
 | [figures/](figures/) | plots from `catanax/experiments/krd_rollout_sweep` + a surface-fit script |

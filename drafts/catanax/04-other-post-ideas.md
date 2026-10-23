@@ -22,6 +22,8 @@ Every time a measurement or bug made me believe something false:
 - recipe drift
 - search peeking at hidden cards (#114)
 - the open large-batch kernel divergence
+- "bit-identical to main" failing by 25% for a correct change: main itself was batch-dependent (split-K, a recomputed tanh, norm tiling); see 05
+- "it's just rounding" for a 5-ulp difference: check the magnitude before accepting the explanation
 
 Ends with the habits that came out of it.
 

@@ -131,3 +131,26 @@ arithmetic.
 31 of 32 lanes idle." That one sentence explains why v1 (all-vector, masked reductions) and
 v2 (all-scalar, addressed memory) both leave room, and points to the hybrid: a header in
 registers, bitboards for the board.
+
+## Measured: per-family kernel cost (Oct 23, A100, colonist, 2,048 lanes)
+
+From `measure_kernel_families.py` on real self-play snapshots: every lane plays one action
+family; when a lane has no legal action of that family, it plays its first legal action instead.
+
+| family | early (step 40) | middle (250) | late (700) | training mix |
+|---|---|---|---|---|
+| roll | 0.134 ms | 0.161 | 0.133 | 0.119 |
+| end turn | 0.133 | 0.176 | 0.135 | 0.131 |
+| build road | 0.136 | 0.224 | **0.279** | **0.256** |
+| build settlement | 0.135 | 0.176 | 0.189 | 0.165 |
+| maritime trade | 0.133 | 0.175 | 0.135 | 0.141 |
+| real one-ply candidate load (~8.5k rows) | 0.22 | 0.49 | 0.42 | 0.50 |
+
+- **There is a flat floor of about 0.13 ms per 2,048 lanes** that every family pays. This is the
+  "latency-bound scalar code" diagnosis above, now measured: rare dev-card families cost the
+  same as ROLL.
+- **Build road roughly doubles late in the game** (the longest-road search grows with the road
+  network). Settlement adds ~30%.
+- After #144, the engine's share of a colonist one-ply step is ~0.5 of ~2.2 ms (~23%).
+- Next ("F"): attribute the floor (launch, dispatch, finish, row load/store), then vectorize
+  longest road, the component walk and the roll payout across the warp's idle lanes.

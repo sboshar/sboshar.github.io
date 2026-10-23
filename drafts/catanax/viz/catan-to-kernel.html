@@ -326,8 +326,49 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
   <figcaption><b>Figure 9.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">checked: the search backup and expand-write kernels reproduced no race with four warps (0 of 4,096 lanes over 6 repeats)</span></figcaption>
 </figure>
 
+<div class="l-text">
+  <h2><span class="num">7</span>Only score the moves that matter</h2>
+  <p>Self-play's one-ply search takes each game's 16 most likely moves, steps every child and scores it with the value network. It then mixes those values into the policy target. Many of those 16 slots can't change anything. Some are padding, because the position has fewer than 16 legal moves. In some games there is only one candidate, and a softmax over one entry is exactly 1. And a ROLL child's value gets overwritten by the expectation over the 11 dice outcomes.</p>
+  <p>Measured on real self-play, only <b>21%</b> of slots survive that filter on colonist, and 35% on catanatron. Shapes on a GPU have to be static, so the survivors are packed into a fixed buffer. A prefix sum gives each needed (game, move) pair a slot, the buffer is stepped and scored, and the values are scattered back. If a step needs more than the buffer holds, a second chunk runs, so the result is still exact.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="panel"><h3>One-ply search · 32 games × 16 candidate slots → one 40% buffer</h3></div>
+  <svg id="pack-svg"></svg>
+  <div><span class="stat">needed <b id="pk-need">0</b> / 512</span><span class="stat">buffer <b>204</b> rows</span><span class="stat">chunks <b id="pk-chunks">1</b></span><span class="stat">network rows <b id="pk-rows">512</b></span></div>
+  <div class="controls">
+    <button id="pk-go">▶ Pack</button><button id="pk-reset">⟲ Unpack</button><button id="pk-new">New batch</button>
+    <span class="toggle" id="pk-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
+    <span class="step-label">hover a cell for its role</span>
+  </div></div>
+  <figcaption><b>Figure 10.</b> Each column is one game and each cell is one of its top-16 candidate slots. Only the <b>needed</b> cells, real moves in a game that has a choice, are stepped and scored. Packing moves them, in order, into a buffer of 40% of the slots. The buffer was sized from measured fractions: needed 21.5% (max 25%) on colonist and 35% (max 38%) on catanatron. At 30%, catanatron overflowed into a second chunk on most steps, and at 10% the extra chunks cost more than the padding they saved. Result: colonist 832 → 1,307 games/s (1.57×), catanatron 3,057 → 4,166 games/s (1.36×). <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
+</figure>
+
+<div class="l-text">
+  <h2><span class="num">8</span>The same row, a different answer</h2>
+  <p>Packing should change nothing but which rows share a network call. Yet the first check against <code>main</code> failed badly: a quarter of the policy targets differed. Running the same 204 child positions through the network on their own, and as the first 204 rows of a 512-row call, gave values that differed by <b>0.018</b>. That's about five bf16 ulps, far too much to dismiss as rounding in one matmul.</p>
+  <p>The cause is that XLA compiles a different kernel for each shape. Between about 32 and 450 rows there aren't enough output tiles to fill the A100's 108 SMs. So a compiler pass splits each 256-wide dot product into four slices, sums them in fp32, and skips the bf16 rounding of the layer output. At 512 rows a single GEMM rounds to bf16. Every element is off by up to half an ulp, in every layer, and the residual stream accumulates the mismatch. The search target <code>logits + 50·q</code> then turns 0.018 into almost a full logit.</p>
+  <p>Two more effects only showed up once the first was fixed. On colonist, XLA had computed the value head's <code>tanh</code> a second time inside a Triton kernel, whose <code>tanh</code> differs in the last bit. Colonist's per-state Q rescaling magnified that 1-ulp difference about a thousand times. And below about 120 rows, the norm's reduction is tiled differently. The fixes are to switch off the split-K pass for the self-play compile only (training needs it), put an optimization barrier on the value, and keep chunks at least 128 rows. With them, packed and unpacked self-play are bit-identical. They also showed that <code>main</code> itself had never been batch-invariant: searching 16 games alone, instead of as part of 64, changed its policy targets by 0.10.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Same 204 observations · batch 204 vs 512 · max |difference| per layer</h3><svg id="inv-chart"></svg></div>
+    <div class="panel">
+      <h3>What XLA compiles for one 256 → 256 layer</h3>
+      <svg id="inv-gemm"></svg>
+      <div class="note" id="inv-note"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <span class="toggle" id="inv-mode"><button data-v="on" class="on">split-K on (default)</button><button data-v="off">split-K off for self-play</button></span>
+    <span class="step-label">hover a point for its value</span>
+  </div></div>
+  <figcaption><b>Figure 11.</b> Measured on an A100 with jaxlib 0.10.2, on a fresh 256×4 catanatron network, using the same rows at the two batch sizes. Left: the mismatch starts at exactly half a bf16 ulp after the first layer. The RMS norms rescale it, and every residual layer adds more, so it reaches 0.018 in the value. With the split-K pass disabled, every layer is bit-identical at every batch size of 128 rows or more. <code>--xla_gpu_deterministic_ops</code> doesn't help: it makes one shape reproducible, not two shapes agree. An fp32 network doesn't help either, because the summation order still differs.</figcaption>
+</figure>
+
 <footer>
-  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3 and 8 are schematics, not measurements.
+  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3, 8 and 10 are schematics, not measurements.
 </footer>
 <script>
 // ---------------------------------------------------------------------------
@@ -1253,7 +1294,148 @@ function sceneBreakdown() {
   draw("colonist");
 }
 
-[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, sceneBreakdown, scene5, scene6].forEach(f => f());
+// ---------------------------------------------------------------------------
+// Figure 10: packing the needed candidate slots (#144)
+// ---------------------------------------------------------------------------
+function scenePack() {
+  const svg = document.getElementById("pack-svg");
+  const G = 32, K = 16, CAP = 204, cs = 13, W = 1120, H = 250;
+  const gx = 20, gy = 34, bx = 640, by = 34, bcols = 34;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const COLORS = { needed: "#6c9be0", single: "#d8dbe6", roll: "#f6e09d", pad: "#f2f3f7" };
+  const LABEL = { needed: "needed: stepped and scored", single: "only candidate: the softmax is 1", roll: "ROLL: replaced by the dice expectation", pad: "padding: fewer than 16 legal moves" };
+  const PROFILE = { // fitted to the measured fractions (see caption)
+    colonist: { multi: 0.45, rollSingle: 0.65, rollMulti: 0.02 },
+    catanatron: { multi: 0.70, rollSingle: 0.67, rollMulti: 0.17 },
+  };
+  let rules = "colonist", seed = 7, cells = [], anim = null;
+  function sample() {
+    const r = rng(seed * 31 + (rules === "colonist" ? 1 : 2)), p = PROFILE[rules];
+    cells = [];
+    for (let g = 0; g < G; g++) {
+      const multi = r() < p.multi, real = multi ? 2 + Math.floor(r() * 13) : 1;
+      const roll = r() < (multi ? p.rollMulti : p.rollSingle) ? Math.floor(r() * real) : -1;
+      for (let k = 0; k < K; k++) {
+        const kind = k >= real ? "pad" : !multi ? "single" : k === roll ? "roll" : "needed";
+        cells.push({ g, k, kind });
+      }
+    }
+    let rank = 0;
+    cells.forEach(c => { if (c.kind === "needed") c.rank = rank++; });
+    return rank;
+  }
+  function fit() { // next seed whose needed share is within 2 points of the measured mean
+    const target = rules === "colonist" ? 0.215 : 0.35;
+    for (let i = 0; i < 500 && Math.abs(sample() / 512 - target) > 0.02; i++) seed++;
+  }
+  function home(c) { return [gx + c.g * cs, gy + c.k * cs]; }
+  function slot(c) { const s = c.rank % CAP; return [bx + (s % bcols) * cs, by + Math.floor(s / bcols) * cs]; }
+  function draw() {
+    svg.innerHTML = "";
+    fit();
+    const need = sample();
+    el("text", { x: gx, y: 22, style: "font:600 11px Inter, sans-serif;fill:#555c70" }, svg).textContent = "games → (columns), top-16 slots ↓ (rows)";
+    el("text", { x: bx, y: 22, style: "font:600 11px Inter, sans-serif;fill:#555c70" }, svg).textContent = `packed buffer · ${CAP} rows (40% of 512)`;
+    for (let s = 0; s < CAP; s++) el("rect", { x: bx + (s % bcols) * cs + 1, y: by + Math.floor(s / bcols) * cs + 1, width: cs - 2, height: cs - 2, rx: 2, fill: "none", stroke: "#e3e6ee" }, svg);
+    cells.forEach(c => {
+      const [x, y] = home(c);
+      c.node = el("rect", { x: x + 1, y: y + 1, width: cs - 2, height: cs - 2, rx: 2, fill: COLORS[c.kind] }, svg);
+      el("title", {}, c.node).textContent = `game ${c.g}, slot ${c.k}: ${LABEL[c.kind]}`;
+    });
+    Object.entries(LABEL).forEach(([k, t], i) => {
+      el("rect", { x: gx + i * 150, y: H - 20, width: 11, height: 11, rx: 3, fill: COLORS[k] }, svg);
+      el("text", { x: gx + i * 150 + 16, y: H - 11, style: "font:500 10.5px Inter, sans-serif;fill:#555c70" }, svg).textContent = t.split(":")[0];
+    });
+    const chunks = Math.max(1, Math.ceil(need / CAP));
+    document.getElementById("pk-need").textContent = `${need} (${Math.round(100 * need / 512)}%)`;
+    document.getElementById("pk-chunks").textContent = chunks;
+    document.getElementById("pk-rows").textContent = "512";
+    svg.dataset.chunks = chunks;
+  }
+  function tween(forward) {
+    if (anim) cancelAnimationFrame(anim);
+    const t0 = performance.now(), dur = 1100;
+    const frame = now => {
+      const u = Math.min(1, (now - t0) / dur), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2, t = forward ? e : 1 - e;
+      cells.forEach(c => {
+        if (c.kind === "needed") {
+          const [x0, y0] = home(c), [x1, y1] = slot(c), d = Math.min(1, Math.max(0, t * 1.6 - (c.rank / 512) * 0.6));
+          c.node.setAttribute("x", x0 + (x1 - x0) * d + 1); c.node.setAttribute("y", y0 + (y1 - y0) * d + 1);
+        } else c.node.setAttribute("opacity", 1 - 0.75 * t);
+      });
+      if (u < 1) anim = requestAnimationFrame(frame);
+    };
+    anim = requestAnimationFrame(frame);
+    document.getElementById("pk-rows").textContent = forward ? `${CAP} × ${svg.dataset.chunks}` : "512";
+  }
+  document.getElementById("pk-go").onclick = () => tween(true);
+  document.getElementById("pk-reset").onclick = () => tween(false);
+  document.getElementById("pk-new").onclick = () => { seed++; draw(); };
+  document.querySelectorAll("#pk-rules button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("#pk-rules button").forEach(x => x.classList.toggle("on", x === b));
+    rules = b.dataset.v; draw();
+  });
+  draw();
+}
+
+// ---------------------------------------------------------------------------
+// Figure 11: batch-size dependence of the network (#144 review, net_invariance_*.json)
+// ---------------------------------------------------------------------------
+function sceneInvariance() {
+  const LAYERS = [
+    ["input dense", 1.95e-3, 0.13], ["block 0 dense", 1.27e-2, 0.45], ["block 0 residual", 1.38e-2, 0.46],
+    ["block 1 residual", 2.70e-2, 0.65], ["block 2 residual", 3.07e-2, 0.77], ["block 3 residual", 4.03e-2, 0.89],
+    ["value pre-tanh", 1.95e-2, 0.61], ["value", 1.78e-2, 0.54],
+  ];
+  const svg = document.getElementById("inv-chart"), gs = document.getElementById("inv-gemm");
+  const W = 560, H = 300, left = 52, right = 16, top = 16, bottom = 70;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  function draw(mode) {
+    svg.innerHTML = "";
+    const ymax = 0.045, y = v => top + (H - top - bottom) * (1 - v / ymax), x = i => left + (W - left - right) * (i + 0.5) / LAYERS.length;
+    for (let v = 0; v <= ymax + 1e-9; v += 0.01) {
+      el("line", { x1: left, x2: W - right, y1: y(v), y2: y(v), stroke: "#eceff6" }, svg);
+      el("text", { x: left - 6, y: y(v) + 3, class: "label-id", "text-anchor": "end", style: "font-size:9.5px" }, svg).textContent = v.toFixed(2);
+    }
+    const vals = LAYERS.map(l => (mode === "on" ? l[1] : 0));
+    el("polyline", { points: vals.map((v, i) => `${x(i)},${y(v)}`).join(" "), fill: "none", stroke: mode === "on" ? "#e47c93" : "#5fb894", "stroke-width": 2 }, svg);
+    LAYERS.forEach(([name, v, act], i) => {
+      const c = el("circle", { cx: x(i), cy: y(vals[i]), r: 5, fill: mode === "on" ? "#e47c93" : "#5fb894", stroke: "#fff", "stroke-width": 2 }, svg);
+      el("title", {}, c).textContent = mode === "on" ? `${name}: max |diff| ${v.toExponential(2)} (median |activation| ${act})` : `${name}: bit-identical`;
+      el("text", { x: x(i), y: H - bottom + 14, transform: `rotate(35 ${x(i)} ${H - bottom + 14})`, style: "font:500 9.5px Inter, sans-serif;fill:#555c70" }, svg).textContent = name;
+    });
+    if (mode === "on") {
+      el("text", { x: W - right, y: y(0.004), "text-anchor": "end", style: "font:600 10.5px Inter, sans-serif;fill:#c4566f" }, svg).textContent = "value: 0.0178, ×50 in the anchor ≈ 0.9 logits";
+    } else {
+      el("text", { x: (left + W) / 2, y: y(0) - 14, "text-anchor": "middle", style: "font:600 11px Inter, sans-serif;fill:#2f7a5c" }, svg).textContent = "bit-identical at every layer, 128 rows and up";
+    }
+    drawGemm(mode);
+  }
+  function drawGemm(mode) {
+    gs.innerHTML = ""; gs.setAttribute("viewBox", "0 0 420 230");
+    const row = (yy, label, split) => {
+      el("text", { x: 0, y: yy + 12, style: "font:600 11px Inter, sans-serif;fill:#555c70" }, gs).textContent = label;
+      const parts = split ? 4 : 1, w = 160 / parts;
+      for (let p = 0; p < parts; p++) el("rect", { x: 92 + p * (w + 4), y: yy, width: w, height: 20, rx: 3, fill: split ? "#f1b39b" : "#a9d3a0" }, gs);
+      el("text", { x: 92 + 80 + (split ? 6 : 0), y: yy + 34, "text-anchor": "middle", style: "font:500 9.5px 'JetBrains Mono', monospace;fill:#8b91a5" }, gs).textContent = split ? "K = 256 → 4 × 64, summed in f32" : "K = 256 in one GEMM";
+      el("text", { x: 280, y: yy + 14, style: "font:600 10.5px Inter, sans-serif;fill:" + (split ? "#c4566f" : "#2f7a5c") }, gs).textContent = split ? "→ f32 out (no bf16 round)" : "→ bf16 out";
+    };
+    const split204 = mode === "on";
+    row(16, "204 rows", split204);
+    row(86, "512 rows", false);
+    row(156, "13,107 rows", false);
+    document.getElementById("inv-note").textContent = split204
+      ? "Below ~450 rows there aren't enough output tiles for 108 SMs, so the splitk-rewriter pass splits the reduction. A packed 204-row chunk and the unpacked 512-row call then round differently."
+      : "With xla_disable_hlo_passes=splitk-rewriter on the self-play jit, every size compiles to the same single GEMM. Training keeps split-K for its weight gradients.";
+  }
+  document.querySelectorAll("#inv-mode button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("#inv-mode button").forEach(x => x.classList.toggle("on", x === b));
+    draw(b.dataset.v);
+  });
+  draw("on");
+}
+
+[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, sceneBreakdown, scene5, scene6, scenePack, sceneInvariance].forEach(f => f());
 </script>
 </body>
 </html>

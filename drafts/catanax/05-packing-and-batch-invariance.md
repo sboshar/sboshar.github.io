@@ -1,7 +1,7 @@
 # Only score what can change the answer, and the 0.018 that wasn't a bug
 
 <!-- Bullet outline. Source: catanax #144 (PR + ~/bench144review/REPORT.md on the A100 VM). Numbers: A100-40GB, jaxlib 0.10.2. [CHECK] = verify before publishing. -->
-<!-- Interactive figures: viz/catan-to-kernel.html sections 7 and 8. -->
+<!-- Interactive figures: viz/catan-to-kernel.html sections 7 and 8 (Figures 10-12). -->
 
 ## Main idea of the post
 - **The cheapest work is work you prove can't matter.** One-ply search scored every candidate child, then threw most of the values away.
@@ -24,7 +24,9 @@
   | games with more than one candidate | 45% | 70% |
 
 - Colonist wastes more: its games more often have a single legal move.
-- [FIGURE] the B × 16 slot grid, colored padding / single / roll / needed, packing into a buffer (viz Figure 10).
+- [FIGURE] toy step-through, 6 games × 4 slots, buffer of 8: no packing (24 network rows), packing that fits (8), packing that overflows (2 chunks, 16) (viz Figure 10).
+- [FIGURE] the same at real scale: 32 games × 16 slots, colored padding / single / roll / needed, packed into a 40% buffer (viz Figure 11).
+- **Intro needs to define packing for a general reader:** stream compaction under static shapes = prefix sum → gather into a fixed buffer → compute → scatter back; overflow runs another chunk.
 
 ## Part 2: packing with static shapes
 - **JAX needs fixed shapes,** so "compute only the needed rows" becomes a fixed-size buffer:
@@ -87,7 +89,7 @@ In exact arithmetic, row i of `x @ W` depends only on row i of x. On a GPU, XLA 
   | block 3 residual | 4.03e-2 | 0.89 | |
   | value (tanh) | **1.78e-2** | 0.54 | |
 
-  - [FIGURE] error growth through the layers, split-K on vs off (viz Figure 11).
+  - [FIGURE] error growth through the layers, split-K on vs off (viz Figure 12).
 - **Amplification:** paper_lite's anchor `logits + 50·q` turns 0.018 into ~0.9 logits, enough to flip sampled moves.
 - **What didn't help:**
   - `--xla_gpu_deterministic_ops`: it makes one shape reproducible, not two shapes agree

@@ -328,8 +328,38 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 
 <div class="l-text">
   <h2><span class="num">7</span>Only score the moves that matter</h2>
-  <p>Self-play's one-ply search takes each game's 16 most likely moves, steps every child and scores it with the value network. It then mixes those values into the policy target. Many of those 16 slots can't change anything. Some are padding, because the position has fewer than 16 legal moves. In some games there is only one candidate, and a softmax over one entry is exactly 1. And a ROLL child's value gets overwritten by the expectation over the 11 dice outcomes.</p>
-  <p>Measured on real self-play, only <b>21%</b> of slots survive that filter on colonist, and 35% on catanatron. Shapes on a GPU have to be static, so the survivors are packed into a fixed buffer. A prefix sum gives each needed (game, move) pair a slot, the buffer is stepped and scored, and the values are scattered back. If a step needs more than the buffer holds, a second chunk runs, so the result is still exact.</p>
+  <p>So far every speedup has come from the engine. The next one comes from the search that sits on top of it. To build a training target for each position, self-play runs a <b>one-ply search</b>. It takes the game's 16 most promising moves under the network's prior. It plays each one on a copy of the game, producing a <i>child</i> position, and asks the value network how good that child is. Then it blends those 16 values with the prior into a policy target, and samples the move to play. With 2,048 games in a batch, that's 32,768 children to step and score on every move. Scoring them, one network call per child row, is the biggest single cost in a self-play step.</p>
+  <p>But many of those 16 slots can't change anything:</p>
+  <ul>
+    <li><b>Padding.</b> When a position has fewer than 16 legal moves, the rest of the slots are empty, but a fixed-shape program still steps and scores them.</li>
+    <li><b>Only one candidate.</b> Many Catan positions have exactly one legal move, like rolling the dice or ending the turn. A softmax over one entry is exactly 1, so the target and the move are fixed no matter what the network says.</li>
+    <li><b>ROLL.</b> When rolling is one of several options, its value is replaced by the average over the 11 possible dice totals, so the network's opinion of the one random child is thrown away.</li>
+  </ul>
+  <p>Measured on real self-play, only <b>21%</b> of slots are needed on colonist, and 35% on catanatron. The rest of the work is computed and discarded.</p>
+  <p>The obvious fix is "only compute the needed ones", but a GPU program compiled with JAX has static shapes: it can't run the network on "however many rows happen to be needed this step". <b>Packing</b> (also called stream compaction) gets around that. It reserves a fixed-size <b>buffer</b>, smaller than the full batch, and moves the needed rows into it, in order:</p>
+  <ol>
+    <li>A <b>prefix sum</b> over the needed flags gives each needed slot its position in the buffer (0, 1, 2, …).</li>
+    <li><b>Gather:</b> copy each needed slot's (game, move) into its buffer row. Empty buffer rows are filled with harmless copies.</li>
+    <li>Step and score the buffer: one network call on a smaller, fixed shape.</li>
+    <li><b>Scatter:</b> write each value back to the slot it came from. The filler rows' results are dropped.</li>
+  </ol>
+  <p>If more slots are needed than the buffer holds, the loop simply runs a second <b>chunk</b> with the next buffer's worth. The answer is still exact; it just costs another network call. The figure below walks through a toy batch of 6 games with 4 candidates each, without packing, with packing, and with packing when the batch overflows the buffer.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="panel"><h3 id="pw-title">Step through it · 6 games × 4 candidate slots · buffer of 8 rows</h3></div>
+  <svg id="pw-svg"></svg>
+  <div class="inspector" id="pw-cap" style="min-height:58px"></div>
+  <div class="controls">
+    <span class="toggle" id="pw-mode"><button data-v="none" class="on">no packing</button><button data-v="fits">packing · fits</button><button data-v="over">packing · overflow</button></span>
+    <button id="pw-reset">⟲ Reset</button><button id="pw-next">Step ▶</button><button id="pw-play">▶ Play</button>
+    <span class="step-label" id="pw-step"></span>
+  </div></div>
+  <figcaption><b>Figure 10.</b> A toy batch: each column is a game, and each cell is one of its candidate moves. <b>No packing</b> runs the network on all 24 rows, 17 of which can't affect the result. <b>Packing · fits</b>: early in the game, 7 slots are needed; one call on an 8-row buffer handles them, and the spare row is filler. <b>Packing · overflow</b>: later, games have more choices and 14 slots are needed; the loop runs two chunks of 8, still exact, but now 16 network rows. That's why the real buffer is sized from measured fractions: large enough that a second chunk is rare, small enough to skip most of the waste.</figcaption>
+</figure>
+
+<div class="l-text">
+  <p>At real scale the picture is the same, just bigger. Here is a 32-game batch with 16 candidates per game, drawn to match the measured colonist and catanatron fractions, packed into a buffer of 40% of the slots.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -341,7 +371,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="pk-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
     <span class="step-label">hover a cell for its role</span>
   </div></div>
-  <figcaption><b>Figure 10.</b> Each column is one game and each cell is one of its top-16 candidate slots. Only the <b>needed</b> cells, real moves in a game that has a choice, are stepped and scored. Packing moves them, in order, into a buffer of 40% of the slots. The buffer was sized from measured fractions: needed 21.5% (max 25%) on colonist and 35% (max 38%) on catanatron. At 30%, catanatron overflowed into a second chunk on most steps, and at 10% the extra chunks cost more than the padding they saved. Result: colonist 832 → 1,307 games/s (1.57×), catanatron 3,057 → 4,166 games/s (1.36×). <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
+  <figcaption><b>Figure 11.</b> Each column is one game and each cell is one of its top-16 candidate slots. Only the <b>needed</b> cells, real moves in a game that has a choice, are stepped and scored. Packing moves them, in order, into a buffer of 40% of the slots. The buffer was sized from measured fractions: needed 21.5% (max 25%) on colonist and 35% (max 38%) on catanatron. At 30%, catanatron overflowed into a second chunk on most steps, and at 10% the extra chunks cost more than the padding they saved. Result: colonist 832 → 1,307 games/s (1.57×), catanatron 3,057 → 4,166 games/s (1.36×). <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
 </figure>
 
 <div class="l-text">
@@ -364,11 +394,11 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="inv-mode"><button data-v="on" class="on">split-K on (default)</button><button data-v="off">split-K off for self-play</button></span>
     <span class="step-label">hover a point for its value</span>
   </div></div>
-  <figcaption><b>Figure 11.</b> Measured on an A100 with jaxlib 0.10.2, on a fresh 256×4 catanatron network, using the same rows at the two batch sizes. Left: the mismatch starts at exactly half a bf16 ulp after the first layer. The RMS norms rescale it, and every residual layer adds more, so it reaches 0.018 in the value. With the split-K pass disabled, every layer is bit-identical at every batch size of 128 rows or more. <code>--xla_gpu_deterministic_ops</code> doesn't help: it makes one shape reproducible, not two shapes agree. An fp32 network doesn't help either, because the summation order still differs.</figcaption>
+  <figcaption><b>Figure 12.</b> Measured on an A100 with jaxlib 0.10.2, on a fresh 256×4 catanatron network, using the same rows at the two batch sizes. Left: the mismatch starts at exactly half a bf16 ulp after the first layer. The RMS norms rescale it, and every residual layer adds more, so it reaches 0.018 in the value. With the split-K pass disabled, every layer is bit-identical at every batch size of 128 rows or more. <code>--xla_gpu_deterministic_ops</code> doesn't help: it makes one shape reproducible, not two shapes agree. An fp32 network doesn't help either, because the summation order still differs.</figcaption>
 </figure>
 
 <footer>
-  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3, 8 and 10 are schematics, not measurements.
+  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3, 8, 10 and 11 are schematics, not measurements.
 </footer>
 <script>
 // ---------------------------------------------------------------------------
@@ -1295,7 +1325,146 @@ function sceneBreakdown() {
 }
 
 // ---------------------------------------------------------------------------
-// Figure 10: packing the needed candidate slots (#144)
+// Figure 10: packing step by step (toy batch: no packing / fits / overflow)
+// ---------------------------------------------------------------------------
+function scenePackWalk() {
+  const svg = document.getElementById("pw-svg"), cap = document.getElementById("pw-cap");
+  const W = 860, H = 340, G = 6, K = 4, cs = 40, gap = 6, gx = 20, gy = 46, CAP = 8;
+  const bx = 340, by = 34, bcs = 32, bgap = 3, nx = 520, ny = 80, nw = 150, nh = 130;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const COLORS = { needed: "#6c9be0", single: "#d8dbe6", roll: "#f6e09d", pad: "#f2f3f7" };
+  // N = needed, S = only candidate, R = ROLL with other options, . = padding (fewer legal moves)
+  const LAYOUT = {
+    fits: ["NNN.", "S...", "NNR.", "NN..", "S...", "S..."],
+    over: ["NNNN", "NNN.", "NNR.", "NNN.", "S...", "NN.."],
+  };
+  LAYOUT.none = LAYOUT.fits;
+  const KIND = { N: "needed", S: "single", R: "roll", ".": "pad" };
+  let mode = "none", step = 0, cells = [], ghosts = [], netBox, netText, timer = null, rowsUsed = 0, calls = 0;
+  const home = c => [gx + c.g * (cs + gap), gy + c.k * (cs + gap)];
+  const bufPos = (i, col = 0) => [bx + col * (bcs + 10), by + i * (bcs + bgap)];
+
+  function build() {
+    svg.innerHTML = "";
+    const defs = el("defs", {}, svg);
+    const pat = el("pattern", { id: "pw-hatch", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+    el("rect", { width: 6, height: 6, fill: "#f6f1fb" }, pat);
+    el("line", { x1: 0, y1: 0, x2: 0, y2: 6, stroke: "#d9cdee", "stroke-width": 3 }, pat);
+    el("text", { x: gx, y: 26, style: "font:600 12.5px Inter, sans-serif;fill:#555c70" }, svg).textContent = "6 games (columns) × 4 candidate slots";
+    for (let g = 0; g < G; g++) el("text", { x: gx + g * (cs + gap) + cs / 2, y: gy + K * (cs + gap) + 12, "text-anchor": "middle", style: "font:500 11px Inter, sans-serif;fill:#8b91a5" }, svg).textContent = `game ${g}`;
+    const label = mode === "none" ? "network input · 24 rows" : `buffer · ${CAP} rows`;
+    el("text", { x: bx, y: 24, style: "font:600 12.5px Inter, sans-serif;fill:#555c70" }, svg).textContent = label;
+    const cols = mode === "none" ? 3 : 1;
+    for (let c = 0; c < cols; c++) for (let i = 0; i < CAP; i++) {
+      const [x, y] = bufPos(i, c);
+      el("rect", { x, y, width: bcs, height: bcs, rx: 4, fill: "none", stroke: "#e3e6ee", "stroke-dasharray": "3 3" }, svg);
+    }
+    netBox = el("rect", { x: nx, y: ny, width: nw, height: nh, rx: 14, fill: "#f5f6fa", stroke: "#e3e6ee" }, svg);
+    el("text", { x: nx + nw / 2, y: ny + nh / 2 - 6, "text-anchor": "middle", style: "font:600 13px Inter, sans-serif;fill:#555c70" }, svg).textContent = "step + value net";
+    netText = el("text", { x: nx + nw / 2, y: ny + nh / 2 + 16, "text-anchor": "middle", style: "font:500 11px 'JetBrains Mono', monospace;fill:#8b91a5" }, svg);
+    el("line", { x1: bx + (mode === "none" ? 3 * (bcs + 10) : bcs + 10), y1: ny + nh / 2, x2: nx - 8, y2: ny + nh / 2, stroke: "#c8ccd9", "stroke-width": 1.5, "marker-end": "" }, svg);
+    const tally = el("text", { x: nx + nw + 18, y: ny + 50, style: "font:600 13px Inter, sans-serif;fill:#2a2f3d" }, svg);
+    tally.id = "pw-tally";
+    const tally2 = el("text", { x: nx + nw + 18, y: ny + 72, style: "font:500 12px Inter, sans-serif;fill:#555c70" }, svg);
+    tally2.id = "pw-tally2";
+    cells = []; let rank = 0;
+    LAYOUT[mode].forEach((col, g) => [...col].forEach((ch, k) => {
+      const c = { g, k, kind: KIND[ch] };
+      if (c.kind === "needed") c.rank = rank++;
+      c.value = (0.15 + ((g * 7 + k * 13) % 17) / 20).toFixed(2);
+      const [x, y] = home(c);
+      c.grp = el("g", { transform: `translate(${x},${y})` }, svg);
+      c.rect = el("rect", { width: cs, height: cs, rx: 6, fill: COLORS[c.kind], stroke: c.kind === "pad" ? "#d8dbe6" : "none", "stroke-dasharray": c.kind === "pad" ? "3 3" : "" }, c.grp);
+      c.txt = el("text", { x: cs / 2, y: cs / 2 + 4, "text-anchor": "middle", style: "font:600 11px 'JetBrains Mono', monospace;fill:#2a2f3d" }, c.grp);
+      c.x = x; c.y = y; c.s = 1;
+      cells.push(c);
+    }));
+    ghosts = [];
+    for (let i = 0; i < CAP; i++) {
+      const [x, y] = bufPos(i);
+      const gr = el("g", { transform: `translate(${x},${y})`, opacity: 0 }, svg);
+      el("rect", { width: bcs, height: bcs, rx: 4, fill: "#ffffff", stroke: "#b9bfd0", "stroke-dasharray": "2 2" }, gr);
+      el("text", { x: bcs / 2, y: bcs / 2 + 3, "text-anchor": "middle", style: "font:500 8.5px Inter, sans-serif;fill:#8b91a5" }, gr).textContent = "filler";
+      ghosts.push(gr);
+    }
+    [["needed", "needed"], ["single", "only candidate"], ["roll", "ROLL (dice average)"], ["pad", "padding"]].forEach(([k, t], i) => {
+      el("rect", { x: gx + i * 140, y: H - 22, width: 11, height: 11, rx: 3, fill: COLORS[k], stroke: k === "pad" ? "#d8dbe6" : "none" }, svg);
+      el("text", { x: gx + i * 140 + 16, y: H - 12, style: "font:500 12px Inter, sans-serif;fill:#555c70" }, svg).textContent = t;
+    });
+    rowsUsed = 0; calls = 0; tallies();
+  }
+  function tallies() {
+    document.getElementById("pw-tally").textContent = `network rows: ${rowsUsed}`;
+    document.getElementById("pw-tally2").textContent = `network calls: ${calls}`;
+  }
+  function move(c, x, y, s, dur = 650) {
+    const x0 = c.x, y0 = c.y, s0 = c.s, t0 = performance.now();
+    const f = now => {
+      const u = Math.min(1, (now - t0) / dur), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      const xx = x0 + (x - x0) * e, yy = y0 + (y - y0) * e, ss = s0 + (s - s0) * e;
+      c.grp.setAttribute("transform", `translate(${xx},${yy}) scale(${ss})`);
+      if (u < 1) requestAnimationFrame(f); else { c.x = x; c.y = y; c.s = s; }
+    };
+    requestAnimationFrame(f);
+  }
+  const wasted = c => c.kind !== "needed";
+  function glow(on, text) {
+    netBox.setAttribute("fill", on ? "#e4eefa" : "#f5f6fa"); netBox.setAttribute("stroke", on ? "#6f9fd8" : "#e3e6ee");
+    netText.textContent = text || "";
+  }
+  function setGhosts(n) { ghosts.forEach((g, i) => g.setAttribute("opacity", i >= n ? 1 : 0)); }
+  const sc = bcs / cs;
+
+  function stepsFor() {
+    if (mode === "none") return [
+      () => "24 candidate slots. Without packing, every slot is stepped and scored, whether or not its value can matter.",
+      () => { cells.forEach((c, i) => { const [x, y] = bufPos(i % CAP, Math.floor(i / CAP)); move(c, x, y, sc); if (wasted(c)) c.rect.setAttribute("fill", "url(#pw-hatch)"); });
+        return `All 24 rows go into one network call. The hatched ${cells.filter(wasted).length} can't change the result: padding, single candidates, and a ROLL whose value is replaced by the dice average.`; },
+      () => { glow(true, "24 rows"); rowsUsed = 24; calls = 1; tallies(); cells.forEach(c => c.txt.textContent = wasted(c) ? "" : c.value);
+        return "One call on 24 rows. Every row costs the same, wasted or not."; },
+      () => { glow(false); cells.forEach(c => { const [x, y] = home(c); move(c, x, y, 1); });
+        return "Values go back to their slots. Only the blue ones are used; the rest of the compute was thrown away."; },
+    ];
+    const need = cells.filter(c => !wasted(c)), chunks = Math.ceil(need.length / CAP), steps = [
+      () => `${need.length} of 24 slots are needed. The buffer holds ${CAP}, so this takes ${chunks} chunk${chunks > 1 ? "s" : ""}.`,
+      () => { cells.forEach(c => { if (wasted(c)) c.grp.setAttribute("opacity", 0.35); else c.txt.textContent = c.rank; });
+        return "Prefix sum: number the needed slots 0, 1, 2, … in order. That number is each slot's row in the buffer (row = number mod 8, chunk = number ÷ 8)."; },
+    ];
+    for (let j = 0; j < chunks; j++) {
+      const these = need.filter(c => Math.floor(c.rank / CAP) === j), n = these.length;
+      steps.push(() => { these.forEach(c => { const [x, y] = bufPos(c.rank % CAP); move(c, x, y, sc); }); setGhosts(n);
+        return `Chunk ${j + 1}: gather slots ${j * CAP}–${j * CAP + n - 1} into the buffer.` + (n < CAP ? ` The ${CAP - n} empty row${CAP - n > 1 ? "s get" : " gets"} filler (a copy of a real row), so the shape stays ${CAP}.` : " The buffer is full."); });
+      steps.push(() => { glow(true, `${CAP} rows`); rowsUsed += CAP; calls += 1; tallies(); these.forEach(c => c.txt.textContent = c.value);
+        return `One network call on the ${CAP}-row buffer.` + (j > 0 ? " The second chunk costs a full call, even though it is partly filler." : ""); });
+      steps.push(() => { glow(false); setGhosts(CAP); these.forEach(c => { const [x, y] = home(c); move(c, x, y, 1); });
+        return `Scatter: each value goes back to the slot it came from. Filler results are dropped.` + (j + 1 < chunks ? " More slots are still waiting, so the loop runs again." : ""); });
+    }
+    steps.push(() => { cells.forEach(c => c.grp.setAttribute("opacity", 1));
+      return chunks === 1 ? `Done: ${rowsUsed} network rows instead of 24, same result.` : `Done: ${rowsUsed} network rows in ${calls} calls instead of 24 in one. Still exact, but the saving shrank. That's why the real buffer is sized so that a second chunk is rare.`; });
+    return steps;
+  }
+  let steps = [];
+  function reset() { if (timer) { clearInterval(timer); timer = null; document.getElementById("pw-play").textContent = "▶ Play"; } build(); steps = stepsFor(); step = 0; cap.textContent = steps[0](); step = 1; label(); }
+  function label() { document.getElementById("pw-step").textContent = `step ${Math.min(step, steps.length)} / ${steps.length}`; }
+  function next() { if (step >= steps.length) return false; cap.textContent = steps[step](); step++; label(); return step < steps.length; }
+  document.getElementById("pw-next").onclick = next;
+  document.getElementById("pw-reset").onclick = reset;
+  document.getElementById("pw-play").onclick = () => {
+    const b = document.getElementById("pw-play");
+    if (timer) { clearInterval(timer); timer = null; b.textContent = "▶ Play"; return; }
+    if (step >= steps.length) reset();
+    b.textContent = "❚❚ Pause";
+    timer = setInterval(() => { if (!next()) { clearInterval(timer); timer = null; b.textContent = "▶ Play"; } }, 1500);
+  };
+  document.querySelectorAll("#pw-mode button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("#pw-mode button").forEach(x => x.classList.toggle("on", x === b));
+    mode = b.dataset.v; reset();
+  });
+  reset();
+}
+
+// ---------------------------------------------------------------------------
+// Figure 11: packing the needed candidate slots (#144)
 // ---------------------------------------------------------------------------
 function scenePack() {
   const svg = document.getElementById("pack-svg");
@@ -1379,7 +1548,7 @@ function scenePack() {
 }
 
 // ---------------------------------------------------------------------------
-// Figure 11: batch-size dependence of the network (#144 review, net_invariance_*.json)
+// Figure 12: batch-size dependence of the network (#144 review, net_invariance_*.json)
 // ---------------------------------------------------------------------------
 function sceneInvariance() {
   const LAYERS = [
@@ -1435,7 +1604,7 @@ function sceneInvariance() {
   draw("on");
 }
 
-[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, sceneBreakdown, scene5, scene6, scenePack, sceneInvariance].forEach(f => f());
+[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, sceneBreakdown, scene5, scene6, scenePackWalk, scenePack, sceneInvariance].forEach(f => f());
 </script>
 </body>
 </html>

@@ -54,7 +54,16 @@
   - failed: a closed-form degree-parity formula ("provably over-counts")
   - per-game Pallas kernel (below): 9.5–12×
   - inside the v2 engine kernel: used-set indexed by edge id in 31-bit limbs (no prefix sum or popcount in Triton)
-  - future: seed only from nodes with degree ≠ 2 (exact; fewer duplicates; lower stack occupancy); add a stack-overflow flag
+  - **arms + pairs (#146):** a trail through the new edge (u, v) = the edge + one arm from u + one arm from v, sharing no road
+    - before: grow arm A, and for every prefix of A re-enumerate every arm B → ~|A| × |B| sequential iterations
+    - after: list each end's arms once (|A| + |B|) into two 32-slot lists, then the warp's 32 lanes test all 32 × 32 pairs at once (3 limb ANDs + an enemy flag + a max)
+    - geometry makes it cheap: degree ≤ 3, so an arm branches ≤ 2 ways per step; real self-play peaks at 21 arms per end
+    - the enemy rule becomes a pairing rule: an arm may end on an enemy node in the component; two enemy-ended arms don't pair (a trail has one start)
+    - exact fallback: on overflow, run the old search too and take the max (stored arms are real trails)
+    - loop iterations per road build: mean 11.4 → 7.2, worst lane 134 → 38 (colonist); candidate-load kernel −44%
+    - [FIGURE] viz Figure 6: the arms × arms pair grid, hover a cell to see the trail
+  - **masks sized to the board (#146):** the bitmask helper built limbs for the padded 128-wide edge vector (5 limbs) instead of the real 72 edges (3); every DFS frame carries the used-edge set, so −20% kernel time for free
+  - future: seed only from nodes with degree ≠ 2 (exact; fewer duplicates; lower stack occupancy)
 - interactive: viz figures 3 (straggler race) and 4 (DFS stack)
 
 ## Act 2: the longest-road kernel: clever bits
@@ -158,6 +167,15 @@
   - "the fourth time I wrote the same fix"
 - emit the legal mask (and maybe the observation) from the engine kernel, as pgx does
 - longest road: seed the DFS only from nodes whose degree ≠ 2 (exact; fewer duplicates; lower stack occupancy)
+
+## Measure the floor before attacking it (#146)
+- every action family seemed to pay "0.13 ms per 2,048 lanes"; stubbed kernel variants showed only 43% of it was the kernel
+  - 40% the XLA chance presample (dice/steal RNG), 17% the measuring harness summing the 8 MB output
+- the real cost was the road search on the one-ply candidate load: 0.31 of 0.38 ms (colonist) → 0.10 after #146
+- trap: stubbing `_finish` silently deleted the road searches too (their result had no consumer, so XLA dropped them)
+- kernel time = the slowest lane's time (all 2,048 programs fit in one wave), so the tail (134 iterations), not the mean (11), sets the cost
+- result: −8.4% (colonist one-ply), −8.7% (catanatron one-ply), −8.7% (colonist MCTS: engine kernel 7.97 → 3.24 ms/step)
+- after #146 the engine kernel is 11% of a colonist one-ply step and 7% of MCTS: engine work has hit diminishing returns
 
 ## Epilogue: the network was the next problem (see 05)
 - packing one-ply candidates (only 21–35% of slots matter) gave 1.36–1.57× self-play

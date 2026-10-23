@@ -154,3 +154,14 @@ family; when a lane has no legal action of that family, it plays its first legal
 - After #144, the engine's share of a colonist one-ply step is ~0.5 of ~2.2 ms (~23%).
 - Next ("F"): attribute the floor (launch, dispatch, finish, row load/store), then vectorize
   longest road, the component walk and the roll payout across the warp's idle lanes.
+
+## Follow-up (#146): what the floor actually was, and what moved
+
+- Of the ~0.13 ms "floor": 0.052 ms XLA chance presample, ~0.022 ms the measuring harness, 0.056 ms the kernel
+  (launch + row copy 0.017, slowest lane's applier 0.025, `_finish` 0.013).
+- Items 2–4 of the old list (component walk, roll payout, free-road check) measured ≤ 0.025 ms or run on almost no lanes: skipped.
+- Road search on the one-ply candidate load: 0.313 → 0.104 ms (colonist), 0.234 → 0.113 ms (catanatron), from
+  3-limb masks (E1) and arms + pairs (E2). End to end −8.4 / −8.7 / −8.7% (colonist one-ply / catanatron one-ply / colonist MCTS).
+- Remaining engine-side items, now small: the XLA presample (0.04–0.08 ms per call), `init_board` on every lane for resets
+  (~2.4% of a one-ply step), full sorts over 294 actions (~4.6%).
+

@@ -250,6 +250,25 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 </figure>
 
 <div class="l-text">
+  <p>The two-arm search still does more work than it needs to. For every prefix of arm A it grows every possible arm B again, so its sequential loop runs roughly <code>|A| × |B|</code> times, all inside one game's warp. But the two arms only interact through a single question: do they share a road? So the kernel now lists the arms from each end <b>once</b>, which takes <code>|A| + |B|</code> steps, into two 32-slot lists. Then it lets the warp's 32 lanes test every pair at once: three 31-bit ANDs for "no shared road", one flag test for the enemy rule, and a max over the pairs. The sequential part shrinks, and the part that grows is exactly the kind of work lanes are for.</p>
+  <p>Catan's geometry is what makes this cheap. Every intersection has at most 3 roads, and one of them is the road an arm arrived on, so an arm branches at most two ways per step. Real self-play never produced more than 21 arms per end. If a list ever overflows, the old search runs as a fallback, and the result stays exact. Hover over a cell to see the two arms it pairs:</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Orange builds the road joining its two chains</h3><svg id="board-arms" class="board-svg"></svg></div>
+    <div class="panel">
+      <h3>Every arm from u × every arm from v · cell = trail length</h3>
+      <svg id="arms-grid"></svg>
+      <div class="kv" id="arms-kv" style="margin-top:10px"></div>
+    </div>
+  </div></div>
+  <figcaption><b>Figure 6.</b> Arms and pairs on the same board as Figure 5. Each row is an arm from one end of the new road (violet), and each column an arm from the other end (teal). A green cell is a valid trail: the two arms share no road, and they don't both end on an opponent's settlement. Its number is the trail's length, the two arms plus the new road. The outlined cell is the longest. In the kernel, the 32 × 32 version of this grid is one vectorized pass across the warp. On real self-play road builds it cut the loop count from a mean of 11.4 (worst game 134) to 7.2 (worst 38), and the one-ply candidate kernel time by 44%.</figcaption>
+</figure>
+
+
+
+<div class="l-text">
   <p>Ported into the Pallas kernel, with the full search kept only for road cuts, it was bit-exact on every parity test and on 196,608 games forced to build a road or a settlement. The same profiling also pointed at the <b>legal-action mask</b>, still plain XLA: 27 separate GPU kernels for a few dozen comparisons per game, a flat 0.1 ms per batch. Rewritten as one Pallas program per game (one vector over the 294 action ids, gathering straight from the state row), it is about 5× faster and also bit-exact.</p>
 </div>
 
@@ -258,7 +277,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <div class="panel"><h3>Engine step · colonist · ms per 1,024-game step</h3><svg id="time-step"></svg></div>
     <div class="panel"><h3>Whole simulation step (engine step + legal mask) · colonist</h3><svg id="time-total"></svg></div>
   </div></div>
-  <figcaption><b>Figure 6.</b> Measured on an A100 (GPU device time, median of 3 separate processes; no neural network; everything bit-exact). Left: the engine step alone: the plain XLA engine, the fused kernel with the original longest-road search, and the fused kernel searching only through the new road (bold: new vs original, 1.9× late game). Right: the whole simulation step, each pipeline compiled as one function (step, then the legal mask of the new state): pure XLA, the previous fused pipeline (full search + XLA mask), and the new one (search through the new road + Pallas mask). Bold: new vs previous, 1.5–2.2× at every stage and 5–9× faster than pure XLA.</figcaption>
+  <figcaption><b>Figure 7.</b> Measured on an A100 (GPU device time, median of 3 separate processes; no neural network; everything bit-exact). Left: the engine step alone: the plain XLA engine, the fused kernel with the original longest-road search, and the fused kernel searching only through the new road (bold: new vs original, 1.9× late game). Right: the whole simulation step, each pipeline compiled as one function (step, then the legal mask of the new state): pure XLA, the previous fused pipeline (full search + XLA mask), and the new one (search through the new road + Pallas mask). Bold: new vs previous, 1.5–2.2× at every stage and 5–9× faster than pure XLA.</figcaption>
 </figure>
 
 
@@ -273,7 +292,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="bd-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
     <span class="step-label">hover a segment for its time</span>
   </div></div>
-  <figcaption><b>Figure 7.</b> One step for 1,024 games, no network, GPU device time on an A100. Left bar of each pair = before (XLA legal mask + full longest-road search), right = after (Pallas mask + search through the new road). Kernel parts are attributed by switching them off. Labels give the total and the largest part's share.</figcaption>
+  <figcaption><b>Figure 8.</b> One step for 1,024 games, no network, GPU device time on an A100. Left bar of each pair = before (XLA legal mask + full longest-road search), right = after (Pallas mask + search through the new road). Kernel parts are attributed by switching them off. Labels give the total and the largest part's share.</figcaption>
 </figure>
 <div class="l-text">
   <h2><span class="num">5</span>What the A100 is actually doing</h2>
@@ -300,7 +319,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="c-warps"><button data-v="1" class="on">num_warps = 1</button><button data-v="4">num_warps = 4</button></span>
     <span class="step-label">colors = action family each game is executing</span>
   </div></div>
-  <figcaption><b>Figure 8.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 9) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
+  <figcaption><b>Figure 9.</b> A schematic of a 4,096-game engine step. Each SM holds up to 32 one-warp programs, and its four warp schedulers interleave them to hide memory latency. Toggle to four warps per program: the 64-warp limit binds first, halving residency, and (Figure 10) the in-place writes race. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
 </figure>
 
 <div class="l-text">
@@ -323,7 +342,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="w-mode"><button data-v="4" class="on">num_warps = 4</button><button data-v="1">num_warps = 1</button></span>
     <span class="step-label" id="w-step"></span>
   </div></div>
-  <figcaption><b>Figure 9.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">checked: the search backup and expand-write kernels reproduced no race with four warps (0 of 4,096 lanes over 6 repeats)</span></figcaption>
+  <figcaption><b>Figure 10.</b> One backup step should increment a visit count from 5 to 6. With four warps and one lagging, the late warp loads the already-updated 6 and stores 7. <span class="pill">checked: the search backup and expand-write kernels reproduced no race with four warps (0 of 4,096 lanes over 6 repeats)</span></figcaption>
 </figure>
 
 <div class="l-text">
@@ -355,7 +374,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <button id="pw-reset">⟲ Reset</button><button id="pw-next">Step ▶</button><button id="pw-play">▶ Play</button>
     <span class="step-label" id="pw-step"></span>
   </div></div>
-  <figcaption><b>Figure 10.</b> A toy batch: each column is a game, and each cell is one of its candidate moves. <b>No packing</b> runs the network on all 24 rows, 17 of which can't affect the result. <b>Packing · fits</b>: early in the game, 7 slots are needed; one call on an 8-row buffer handles them, and the spare row is filler. <b>Packing · overflow</b>: later, games have more choices and 14 slots are needed; the loop runs two chunks of 8, still exact, but now 16 network rows. That's why the real buffer is sized from measured fractions: large enough that a second chunk is rare, small enough to skip most of the waste.</figcaption>
+  <figcaption><b>Figure 11.</b> A toy batch: each column is a game, and each cell is one of its candidate moves. <b>No packing</b> runs the network on all 24 rows, 17 of which can't affect the result. <b>Packing · fits</b>: early in the game, 7 slots are needed; one call on an 8-row buffer handles them, and the spare row is filler. <b>Packing · overflow</b>: later, games have more choices and 14 slots are needed; the loop runs two chunks of 8, still exact, but now 16 network rows. That's why the real buffer is sized from measured fractions: large enough that a second chunk is rare, small enough to skip most of the waste.</figcaption>
 </figure>
 
 <div class="l-text">
@@ -371,7 +390,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="pk-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
     <span class="step-label">hover a cell for its role</span>
   </div></div>
-  <figcaption><b>Figure 11.</b> Each column is one game and each cell is one of its top-16 candidate slots. Only the <b>needed</b> cells, real moves in a game that has a choice, are stepped and scored. Packing moves them, in order, into a buffer of 40% of the slots. The buffer was sized from measured fractions: needed 21.5% (max 25%) on colonist and 35% (max 38%) on catanatron. At 30%, catanatron overflowed into a second chunk on most steps, and at 10% the extra chunks cost more than the padding they saved. Result: colonist 832 → 1,307 games/s (1.57×), catanatron 3,057 → 4,166 games/s (1.36×). <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
+  <figcaption><b>Figure 12.</b> Each column is one game and each cell is one of its top-16 candidate slots. Only the <b>needed</b> cells, real moves in a game that has a choice, are stepped and scored. Packing moves them, in order, into a buffer of 40% of the slots. The buffer was sized from measured fractions: needed 21.5% (max 25%) on colonist and 35% (max 38%) on catanatron. At 30%, catanatron overflowed into a second chunk on most steps, and at 10% the extra chunks cost more than the padding they saved. Result: colonist 832 → 1,307 games/s (1.57×), catanatron 3,057 → 4,166 games/s (1.36×). <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
 </figure>
 
 <div class="l-text">
@@ -394,11 +413,11 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="inv-mode"><button data-v="on" class="on">split-K on (default)</button><button data-v="off">split-K off for self-play</button></span>
     <span class="step-label">hover a point for its value</span>
   </div></div>
-  <figcaption><b>Figure 12.</b> Measured on an A100 with jaxlib 0.10.2, on a fresh 256×4 catanatron network, using the same rows at the two batch sizes. Left: the mismatch starts at exactly half a bf16 ulp after the first layer. The RMS norms rescale it, and every residual layer adds more, so it reaches 0.018 in the value. With the split-K pass disabled, every layer is bit-identical at every batch size of 128 rows or more. <code>--xla_gpu_deterministic_ops</code> doesn't help: it makes one shape reproducible, not two shapes agree. An fp32 network doesn't help either, because the summation order still differs.</figcaption>
+  <figcaption><b>Figure 13.</b> Measured on an A100 with jaxlib 0.10.2, on a fresh 256×4 catanatron network, using the same rows at the two batch sizes. Left: the mismatch starts at exactly half a bf16 ulp after the first layer. The RMS norms rescale it, and every residual layer adds more, so it reaches 0.018 in the value. With the split-K pass disabled, every layer is bit-identical at every batch size of 128 rows or more. <code>--xla_gpu_deterministic_ops</code> doesn't help: it makes one shape reproducible, not two shapes agree. An fp32 network doesn't help either, because the summation order still differs.</figcaption>
 </figure>
 
 <footer>
-  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3, 8, 10 and 11 are schematics, not measurements.
+  Draft for the catanax blog series. Board topology and state layout are taken from <span class="mono">catanax/_src/board_constants.py</span> and <span class="mono">GameState</span>; performance numbers are from the repo's benchmarks on an A100-SXM4-40GB. Figures 3, 9, 11 and 12 are schematics, not measurements.
 </footer>
 <script>
 // ---------------------------------------------------------------------------
@@ -1221,6 +1240,75 @@ function sceneThrough() {
 }
 
 // ---------------------------------------------------------------------------
+// Figure 6: arms + pairs (catanax PR #146, _longest_trail_through_arms)
+// ---------------------------------------------------------------------------
+function armsOf(st, player, edge) {
+  const owned = st.edge_owner.map(o => o === player);
+  const enemy = st.node_owner.map(o => o >= 0 && o !== player);
+  const comp = n => st.node_in_component[player * 54 + n] > 0;
+  const [u, v] = EDGE_NODES[edge];
+  const lists = [[], []];
+  let pops = 0;
+  [u, v].forEach((x, side) => {
+    if (enemy[x]) { if (comp(x)) lists[side].push({ edges: [], end: true }); return; }
+    const stack = [{ tip: x, edges: [] }];
+    while (stack.length) {
+      const f = stack.pop(); pops++;
+      lists[side].push({ edges: f.edges, end: false });
+      for (let k = 0; k < 3; k++) {
+        const e = NODE_EDGES[f.tip][k], w = NODE_NEIGHBORS[f.tip][k];
+        if (e < 0 || e === edge || !owned[e] || f.edges.includes(e)) continue;
+        if (enemy[w]) { if (comp(w)) lists[side].push({ edges: [...f.edges, e], end: true }); continue; }
+        stack.push({ tip: w, edges: [...f.edges, e] });
+      }
+    }
+  });
+  return { lists, pops, u, v };
+}
+function sceneArms() {
+  const st = throughState(true);
+  const B = drawBoard(document.getElementById("board-arms"), { labels: true });
+  const { lists: [A, Bv], pops, u, v } = armsOf(st, ORANGE, BUILT_EDGE);
+  const twoArmSteps = throughTrace(st, ORANGE, BUILT_EDGE).length - 1;
+  const fullFrames = dfsTrace(st, ORANGE).frames, fullBest = fullFrames[fullFrames.length - 1].best;
+  const oldFrames = dfsTrace(throughState(false), ORANGE).frames, oldBest = oldFrames[oldFrames.length - 1].best;
+  const ARM_A = "#a58fd6", ARM_B = "#5fb894";
+  const pair = (a, b) => !a.edges.some(e => b.edges.includes(e)) && !(a.end && b.end);
+  let best = 0, bi = -1, bj = -1;
+  A.forEach((a, i) => Bv.forEach((b, j) => { const t = a.edges.length + b.edges.length + 1; if (pair(a, b) && t > best) { best = t; bi = i; bj = j; } }));
+  const svg = document.getElementById("arms-grid");
+  const cs = 34, lx = 70, ty = 52, W = lx + Bv.length * cs + 20, H = ty + A.length * cs + 16;
+  svg.setAttribute("viewBox", `0 0 ${Math.max(W, 300)} ${H}`);
+  svg.style.maxHeight = "360px";
+  el("text", { x: lx, y: 16, style: "font:600 11px Inter, sans-serif;fill:#3f8a6a" }, svg).textContent = `arms from node ${v} →`;
+  el("text", { x: 4, y: ty - 8, style: "font:600 11px Inter, sans-serif;fill:#7d67b8" }, svg).textContent = `from ${u} ↓`;
+  Bv.forEach((b, j) => el("text", { x: lx + j * cs + cs / 2, y: ty - 8, "text-anchor": "middle", class: "label-id", style: "font-size:10px" }, svg).textContent = `${b.edges.length}${b.end ? "*" : ""}`);
+  A.forEach((a, i) => el("text", { x: lx - 8, y: ty + i * cs + cs / 2 + 4, "text-anchor": "end", class: "label-id", style: "font-size:10px" }, svg).textContent = `len ${a.edges.length}${a.end ? "*" : ""}`);
+  function show(a, b) {
+    renderPieces(B, st);
+    B.roads.forEach((r, e) => { r.style.opacity = st.edge_owner[e] === BLUE ? 0.25 : 1; r.setAttribute("stroke-width", 6.5); r.removeAttribute("stroke-dasharray"); });
+    const built = B.roads[BUILT_EDGE]; built.setAttribute("stroke-dasharray", "4 3"); built.setAttribute("stroke-width", 9);
+    if (a) a.edges.forEach(e => { B.roads[e].setAttribute("stroke", ARM_A); B.roads[e].setAttribute("stroke-width", 9); });
+    if (b) b.edges.forEach(e => { B.roads[e].setAttribute("stroke", b && a && a.edges.includes(e) ? "#e47c93" : ARM_B); B.roads[e].setAttribute("stroke-width", 9); });
+  }
+  A.forEach((a, i) => Bv.forEach((b, j) => {
+    const ok = pair(a, b), t = a.edges.length + b.edges.length + 1;
+    const g = el("g", { style: "cursor:pointer" }, svg);
+    const r = el("rect", { x: lx + j * cs + 2, y: ty + i * cs + 2, width: cs - 4, height: cs - 4, rx: 5, fill: ok ? "#e3f5ec" : "#f1f2f6", stroke: i === bi && j === bj ? "#2f7a5c" : "none", "stroke-width": 2.5 }, g);
+    el("text", { x: lx + j * cs + cs / 2, y: ty + i * cs + cs / 2 + 4, "text-anchor": "middle", style: `font:600 11px 'JetBrains Mono', monospace;fill:${ok ? "#2f7a5c" : "#b4b8c6"}` }, g).textContent = ok ? t : "×";
+    el("title", {}, g).textContent = ok ? `trail of ${t} roads` : (a.end && b.end ? "both arms end on an opponent's settlement" : "the arms share a road");
+    g.onmouseenter = () => show(a, b);
+  }));
+  svg.onmouseleave = () => show(A[bi], Bv[bj]);
+  show(A[bi], Bv[bj]);
+  document.getElementById("arms-kv").innerHTML = `<div>arms</div><div class="mono">${A.length} from node ${u}, ${Bv.length} from node ${v}  (* = ends on an opponent)</div>
+    <div>sequential steps</div><div class="mono">${pops} arm pops  vs  ${twoArmSteps} for the two-arm search</div>
+    <div>pairs tested at once</div><div class="mono">${A.length} × ${Bv.length} = ${A.length * Bv.length}  (32 × 32 in the kernel)</div>
+    <div>best through the new road</div><div class="mono" style="color:#2f7a5c;font-weight:600">${best}</div>
+    <div>new longest road</div><div class="mono">max(old ${oldBest}, ${best}) = ${Math.max(oldBest, best)}${Math.max(oldBest, best) === fullBest ? " ✓ same as the full search" : " ✗ differs"}</div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Scene: measured timings (A100, GPU device time, medians of 3 processes)
 // ---------------------------------------------------------------------------
 const TIMING = {
@@ -1325,7 +1413,7 @@ function sceneBreakdown() {
 }
 
 // ---------------------------------------------------------------------------
-// Figure 10: packing step by step (toy batch: no packing / fits / overflow)
+// Figure 11: packing step by step (toy batch: no packing / fits / overflow)
 // ---------------------------------------------------------------------------
 function scenePackWalk() {
   const svg = document.getElementById("pw-svg"), cap = document.getElementById("pw-cap");
@@ -1464,7 +1552,7 @@ function scenePackWalk() {
 }
 
 // ---------------------------------------------------------------------------
-// Figure 11: packing the needed candidate slots (#144)
+// Figure 12: packing the needed candidate slots (#144)
 // ---------------------------------------------------------------------------
 function scenePack() {
   const svg = document.getElementById("pack-svg");
@@ -1548,7 +1636,7 @@ function scenePack() {
 }
 
 // ---------------------------------------------------------------------------
-// Figure 12: batch-size dependence of the network (#144 review, net_invariance_*.json)
+// Figure 13: batch-size dependence of the network (#144 review, net_invariance_*.json)
 // ---------------------------------------------------------------------------
 function sceneInvariance() {
   const LAYERS = [
@@ -1604,7 +1692,7 @@ function sceneInvariance() {
   draw("on");
 }
 
-[scene1, scene2, scene3, scene4, sceneThrough, sceneTiming, sceneBreakdown, scene5, scene6, scenePackWalk, scenePack, sceneInvariance].forEach(f => f());
+[scene1, scene2, scene3, scene4, sceneThrough, sceneArms, sceneTiming, sceneBreakdown, scene5, scene6, scenePackWalk, scenePack, sceneInvariance].forEach(f => f());
 </script>
 </body>
 </html>

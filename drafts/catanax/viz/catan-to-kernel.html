@@ -163,7 +163,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 
 <div class="title">
   <h1>Catan on a GPU</h1>
-  <p class="sub">From a hundred games a second on a CPU to almost six thousand on one GPU, and why most of the work was about one rule: who has the longest road.</p>
+  <p class="sub">From 13 games a second on a laptop to almost six thousand on one GPU, running the same search with the same network, and why most of the work was about one rule: who has the longest road.</p>
 </div>
 <div class="byline">
   <div><b>Author</b>Sam Boshar</div>
@@ -175,12 +175,13 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 <main class="story-main">
 <div class="l-text">
   <p>I've been training agents to play Catan by self-play, the way AlphaZero learned Go. The idea is simple to state and expensive to run. The agent plays itself millions of times, and before every move it runs a small search that tries the moves it's considering on copies of the game. Each of those tries is a call into the game engine, so the engine's speed sets the speed of everything else.</p>
-  <p>This page is the story of making that engine fast, in the order it happened. The chart alongside follows it: each point is something I built, and its height is how many games a second self-play finishes with it. It starts near a hundred and ends near six thousand. Almost every step came down to asking two questions of some piece of work: does its cost depend on the slowest game in the batch, and can its result change anything at all?</p>
+  <p>This page is the story of making that engine fast, in the order it happened. The chart alongside follows it: each point is something I built, and its height is how many games a second self-play finishes with it, always with the same trained network and the same search. It starts at 13 and ends near six thousand. Almost every step came down to asking two questions of some piece of work: does its cost depend on the slowest game in the batch, and can its result change anything at all?</p>
 </div>
 
 <div class="l-text" data-m="0">
-  <h2>A hundred games a second</h2>
-  <p>The obvious place to start is <a href="https://github.com/bcollazo/catanatron">catanatron</a>, the careful, standard Python implementation of Catan. On 16 CPU cores it plays about a hundred games a second, and that's with random players, no neural network to evaluate. Self-play with a network in the loop would be slower still. A training run needs millions of games, so a hundred a second wasn't going to work.</p>
+  <h2>Starting on a CPU</h2>
+  <p>The obvious place to start is <a href="https://github.com/bcollazo/catanatron">catanatron</a>, the careful, standard Python implementation of Catan. On my laptop, an M3 Pro with 12 cores, it plays about 520 games a second, one process per core. That number is easy to misread, though. Those are random players: each move is one call to the engine and nothing else. Self-play is a different workload. Before every move, the agent evaluates its position with a network, tries its 16 most promising moves on copies of the game, and evaluates each of those too.</p>
+  <p>catanatron has no harness for that, so the fair CPU number comes from running my own self-play on the laptop's CPU, with the same network and the same search as every later point on the chart. It finishes 13 games a second. A catanatron training run needs 3,800 iterations of 700 moves across 2,048 games; at that rate it would take about 20 days.</p>
   <p>(I train on two rule sets: catanatron's, two players racing to 10 points, and colonist.io's 1v1 rules, first to 15, with dice that remember recent rolls. The chart follows catanatron's, with a trained network; colonist's numbers come up along the way.)</p>
 </div>
 
@@ -202,7 +203,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
   </div></div>
   <figcaption><b>Figure 1.</b> Left, the board with its corner and edge numbers, which match catanatron's exactly, so the two engines could be checked against each other move by move. Right, the same game as one packed row of 512 integers, 32 cells per line. Hovering a corner lights up every cell that refers to it. The position is a made-up example.</figcaption>
 </figure><div class="l-text" data-m="1">
-  <p>With the network in the loop, the <code>vmap</code> engine finished 126 games a second on an A100. That's the second point on the chart, and it barely clears the first, which didn't even have a network to run. Thousands of games were running at once, and the GPU was getting almost nothing done. Why?</p>
+  <p>On an A100 the same self-play finished 126 games a second, about ten times the laptop. That sounds like progress until you remember what it is: thousands of games running at once on a GPU with 108 multiprocessors, beating a laptop by a factor of ten. On the engine alone, it was worse than that. Running random games through the <code>vmap</code> engine on the laptop's CPU gives 83 games a second, against catanatron's 520 in plain Python. The GPU was getting very little done. Why?</p>
 </div>
 
 <div class="l-text">
@@ -474,10 +475,10 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 
 <div class="l-text">
   <h2>Where this leaves things</h2>
-  <p>From a hundred games a second on a CPU without a network to 5,687 with one, on a single GPU. A catanatron training run that would take 49 hours on the <code>vmap</code> engine now takes about an hour and ten minutes, and a colonist run that would take 153 hours takes under two. The bottleneck moved again and again: from the switch statement to longest road, from the engine to the search, from the search back to the engine. Each fix answered one of the same two questions.</p>
+  <p>From 13 games a second on a laptop to 5,687 on one GPU, with the same network and the same search throughout. A catanatron training run that would take 20 days on the laptop, and 49 hours with the first GPU version, now takes about an hour and ten minutes; a colonist run that would take 153 hours on the first GPU version takes under two. The search-side tricks help the laptop too: today's code runs at 35 games a second there, so the GPU's lead over the best CPU version is about 160×. The bottleneck moved again and again: from the switch statement to longest road, from the engine to the search, from the search back to the engine. Each fix answered one of the same two questions.</p>
   <table class="recap">
     <tr><th>Bottleneck</th><th>Fix</th><th>Self-play, catanatron</th></tr>
-    <tr><td>Python engine on a CPU</td><td>Rules as arrays, <code>vmap</code> on a GPU</td><td>126 games/s</td></tr>
+    <tr><td>Self-play on a laptop CPU (13 games/s)</td><td>Rules as arrays, <code>vmap</code> on a GPU</td><td>126 games/s</td></tr>
     <tr><td>Every game waits for the slowest longest-road search</td><td>One program per game for the search</td><td>1,032</td></tr>
     <tr><td>A switch that runs all 13 kinds of move</td><td>One program per game for the whole move</td><td>2,697</td></tr>
     <tr><td>Searching the whole road network on every road build; a legal-move mask spread over 27 kernels</td><td>Search only through the new road; one Pallas program for the mask</td><td>about 3,060</td></tr>
@@ -495,7 +496,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
   <div class="sc-label" id="sc-label">Scroll to start</div>
   <svg id="sc-chart"></svg>
   <ol class="sc-list" id="sc-list"></ol>
-  <div class="sc-note">A100, trained 256×4 network, one-ply search. The first point is catanatron's Python engine on 16 CPU cores, playing without a network.</div>
+  <div class="sc-note">Catanatron rules, trained 256×4 network, one-ply search, finished games per second. Point 1 is an M3 Pro laptop CPU running the same code as point 2; the rest are one A100.</div>
 </aside>
 </div>
 <footer>
@@ -1777,11 +1778,12 @@ function sceneInvariance() {
 
 // ---------------------------------------------------------------------------
 // Sticky chart: self-play games/s at each milestone, revealed as the reader scrolls
-// Sources: catanax PRs #137 (vmap, road kernel, fused kernel), #143 (before packing),
+// Sources: point 1 measured on an M3 Pro CPU with the #137 code (JAX CPU, XLA engine);
+// catanax PRs #137 (vmap, road kernel, fused kernel), #143 (before packing),
 // #145, #146, #147; catanatron paper_lite, best saved net, A100. Hours = 3,800 iterations.
 // ---------------------------------------------------------------------------
 const MILESTONES = [
-  { short: "CPU", label: "catanatron in Python, 16 CPU cores, no network", gps: 100, hours: null },
+  { short: "laptop CPU", label: "Same self-play on an M3 Pro laptop CPU", gps: 13, hours: 476 },
   { short: "vmap", label: "Rules as arrays, vmap on the GPU", gps: 126, hours: 49 },
   { short: "road kernel", label: "Longest road as a per-game kernel", gps: 1032, hours: 6.0 },
   { short: "fused move", label: "The whole move as one per-game kernel", gps: 2697, hours: 2.4 },
@@ -1792,7 +1794,7 @@ const MILESTONES = [
 ];
 function sceneStoryChart() {
   const svg = document.getElementById("sc-chart");
-  const W = 272, H = 250, L = 40, R = 10, T = 12, Bm = 26;
+  const W = 272, H = 250, L = 40, R = 10, T = 14, Bm = 32;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const markers = [...document.querySelectorAll("[data-m]")];
   let current = -1, lo = 80, hi = 160, anim = null;
@@ -1816,11 +1818,10 @@ function sceneStoryChart() {
     el("text", { x: L, y: H - 6, style: "font:500 9.5px Inter, sans-serif;fill:#8b91a5" }, svg).textContent = "each point: one change, in order";
     if (upto < 0) return;
     const pts = MILESTONES.slice(0, upto + 1).map((m, i) => [x(i), ly(m.gps, a, b), m, i]);
-    if (pts.length > 1) el("polyline", { points: pts.slice(1).map(p => p[0] + "," + p[1]).join(" "), fill: "none", stroke: "#6c9be0", "stroke-width": 2 }, svg);
-    if (pts.length > 1) el("line", { x1: pts[0][0], y1: pts[0][1], x2: pts[1][0], y2: pts[1][1], stroke: "#b9bfd0", "stroke-width": 1.5, "stroke-dasharray": "3 3" }, svg);
+    if (pts.length > 1) el("polyline", { points: pts.map(p => p[0] + "," + p[1]).join(" "), fill: "none", stroke: "#6c9be0", "stroke-width": 2 }, svg);
     pts.forEach(([px, py, m, i]) => {
-      const isNow = i === upto, isCpu = i === 0;
-      const c = el("circle", { cx: px, cy: py, r: isNow ? 6 : 4.5, fill: isCpu ? "#ffffff" : (isNow ? "#e47c93" : "#6c9be0"), stroke: isCpu ? "#8b91a5" : "#ffffff", "stroke-width": 2 }, svg);
+      const isNow = i === upto, isCpu = i === 0 && !isNow;
+      const c = el("circle", { cx: px, cy: py, r: isNow ? 6 : 4.5, fill: isCpu ? "#8b91a5" : (isNow ? "#e47c93" : "#6c9be0"), stroke: "#ffffff", "stroke-width": 2 }, svg);
       el("title", {}, c).textContent = `${m.label}: ${m.gps.toLocaleString()} games/s` + (m.hours ? `, ${m.hours} h to train` : "");
       el("text", { x: px, y: py - (isNow ? 11 : 9), "text-anchor": "middle", style: `font:${isNow ? 700 : 600} ${isNow ? 11 : 9.5}px Inter, sans-serif;fill:${isNow ? "#2a2f3d" : "#8b91a5"}` }, svg).textContent = i + 1;
     });
@@ -1828,7 +1829,7 @@ function sceneStoryChart() {
   function domainFor(upto) {
     if (upto < 0) return [80, 160];
     const vals = MILESTONES.slice(0, upto + 1).map(m => m.gps);
-    return [Math.min(...vals) / 1.25, Math.max(...vals) * 1.35];
+    return [Math.min(...vals) / 1.6, Math.max(...vals) * 1.35];
   }
   function setCurrent(k) {
     if (k === current) return;

@@ -203,7 +203,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
   </div></div>
   <figcaption><b>Figure 1.</b> Left, the board with its corner and edge numbers, which match catanatron's exactly, so the two engines could be checked against each other move by move. Right, the same game as one packed row of 512 integers, 32 cells per line. Hovering a corner lights up every cell that refers to it. The position is a made-up example.</figcaption>
 </figure><div class="l-text" data-m="1">
-  <p>On an A100 the same self-play finished 126 games a second, about ten times the laptop. That sounds like progress until you remember what it is: thousands of games running at once on a GPU with 108 multiprocessors, beating a laptop by a factor of ten. On the engine alone, it was worse than that. Running random games through the <code>vmap</code> engine on the laptop's CPU gives 83 games a second, against catanatron's 520 in plain Python. The GPU was getting very little done. Why?</p>
+  <p>On an A100 the same self-play finished 126 games a second, about ten times the laptop. That sounds like progress until you remember what it is: thousands of games running at once on a GPU with 108 multiprocessors, beating a laptop by a factor of ten. On the engine alone, with no network, it looked even worse. Playing random games, the <code>vmap</code> engine on the A100 finished 822 a second, barely more than catanatron's 520 in plain Python on the laptop. And giving it a bigger batch made it slower: at 16,384 games it dropped to 499 a second. The GPU was getting very little done, and doing more of it at once made things worse. Why?</p>
 </div>
 
 <div class="l-text">
@@ -476,6 +476,17 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 <div class="l-text">
   <h2>Where this leaves things</h2>
   <p>From 13 games a second on a laptop to 5,687 on one GPU, with the same network and the same search throughout. A catanatron training run that would take 20 days on the laptop, and 49 hours with the first GPU version, now takes about an hour and ten minutes; a colonist run that would take 153 hours on the first GPU version takes under two. The search-side tricks help the laptop too: today's code runs at 35 games a second there, so the GPU's lead over the best CPU version is about 160×. The bottleneck moved again and again: from the switch statement to longest road, from the engine to the search, from the search back to the engine. Each fix answered one of the same two questions.</p>
+  <p>The engine on its own tells the same story. Playing random games with no network, so the engine is the only work:</p>
+  <table class="recap">
+    <tr><th>Engine</th><th>Hardware</th><th>Random games/s</th></tr>
+    <tr><td>catanatron (Python)</td><td>M3 Pro laptop, 12 processes</td><td>519</td></tr>
+    <tr><td>catanax, <code>vmap</code></td><td>M3 Pro laptop CPU</td><td>83</td></tr>
+    <tr><td>catanax, <code>vmap</code></td><td>A100, 4,096 games</td><td>822</td></tr>
+    <tr><td>catanax, <code>vmap</code></td><td>A100, 16,384 games</td><td>499</td></tr>
+    <tr><td>catanax, one program per game</td><td>A100, 4,096 games</td><td>13,333</td></tr>
+    <tr><td>catanax, one program per game</td><td>A100, 16,384 games</td><td>19,184</td></tr>
+  </table>
+  <p>The kernel engine plays 37 times as many games as catanatron's Python and 23 times as many as the <code>vmap</code> engine on the same GPU, and unlike <code>vmap</code> it gets faster with a bigger batch. Every row plays the same game: random games average 903–914 moves in all of them.</p>
   <table class="recap">
     <tr><th>Bottleneck</th><th>Fix</th><th>Self-play, catanatron</th></tr>
     <tr><td>Self-play on a laptop CPU (13 games/s)</td><td>Rules as arrays, <code>vmap</code> on a GPU</td><td>126 games/s</td></tr>

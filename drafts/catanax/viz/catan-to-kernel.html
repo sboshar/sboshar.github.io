@@ -116,6 +116,32 @@ svg { display: block; width: 100%; height: auto; }
 .recap { width: 100%; border-collapse: collapse; font: 14px/1.5 Inter, sans-serif; margin: 6px 0 22px; }
 .recap th, .recap td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
 .recap th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.story { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; max-width: 1480px; margin: 0 auto; padding: 0 20px; }
+.story-main { min-width: 0; }
+.story-aside { position: sticky; top: 20px; align-self: start; margin-top: 40px; border: 1px solid var(--rule); border-radius: 14px; padding: 14px 14px 12px; background: var(--paper); font-family: Inter, system-ui, sans-serif; }
+.sc-head { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.sc-value { margin-top: 6px; font: 600 26px/1.1 "JetBrains Mono", monospace; color: var(--ink); }
+.sc-unit { font: 500 13px Inter, sans-serif; color: var(--muted); }
+.sc-label { font-size: 13px; color: var(--ink-2); min-height: 38px; margin-top: 4px; line-height: 1.4; }
+#sc-chart { margin-top: 6px; }
+.sc-note { font-size: 11.5px; color: var(--muted); line-height: 1.45; margin-top: 6px; }
+@media (max-width: 1100px) {
+  .story { grid-template-columns: minmax(0, 1fr); padding: 0; }
+  .story-aside { order: -1; top: 0; z-index: 5; margin: 0; border-radius: 0; border-width: 0 0 1px; display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center; padding: 8px 16px; }
+  .sc-head, .sc-note { display: none; }
+  .sc-value { grid-row: 1; font-size: 20px; margin: 0; }
+  .sc-label { grid-row: 2; grid-column: 1; min-height: 0; font-size: 12px; margin: 0; max-width: 180px; }
+  #sc-chart { grid-row: 1 / span 2; grid-column: 2; margin: 0; max-height: 92px; }
+}
+.sc-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; color: #b4b8c6; }
+.sc-list li { display: flex; gap: 8px; padding: 2px 4px; border-radius: 6px; }
+.sc-list li b { width: 14px; text-align: right; font-weight: 600; }
+.sc-list li span { margin-left: auto; font-family: "JetBrains Mono", monospace; font-size: 11px; }
+.sc-list li.past { color: var(--ink-2); }
+.sc-list li.now { color: var(--ink); background: var(--accent-soft); font-weight: 600; }
+@media (max-width: 1100px) {
+  .sc-list { display: none; }
+}
 footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-top: 1px solid var(--rule); font: 13px/1.6 Inter, sans-serif; color: var(--muted); }
 </style>
 </head>
@@ -123,7 +149,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
 
 <div class="title">
   <h1>Catan on a GPU</h1>
-  <p class="sub">How a board game became thousands of copies running at once, and why the hard part was working out who has the longest road.</p>
+  <p class="sub">From a hundred games a second on a CPU to almost six thousand on one GPU, and why most of the work was about one rule: who has the longest road.</p>
 </div>
 <div class="byline">
   <div><b>Author</b>Sam Boshar</div>
@@ -131,18 +157,23 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
   <div><b>Status</b>Draft</div>
 </div>
 
+<div class="story">
+<main class="story-main">
 <div class="l-text">
   <p>I've been training agents to play Catan by self-play, the way AlphaZero learned Go. The idea is simple to state and expensive to run. The agent plays itself millions of times, and before every move it runs a small search that tries the moves it's considering on copies of the game. Each of those tries is a call into the game engine, so the engine's speed sets the speed of everything else.</p>
-  <a href="https://github.com/bcollazo/catanatron">catanatron</a> is the careful, standard Python implementation of Catan. On 16 CPU cores it plays about a hundred games a second. That's fine for evaluating a bot and far too slow for self-play at the scale I wanted. (I train on two rule sets: catanatron's, two players racing to 10 points, and colonist.io's 1v1 rules, first to 15, with dice that remember recent rolls. Both come up below.)
-  <p>The usual way out is to put the games on a GPU. <a href="https://github.com/jax-ml/jax">JAX</a>, a Python library that compiles array code for accelerators through a compiler called XLA, has a function called <code>vmap</code>: you write the rules for one game, as a pure function on arrays of fixed size, and <code>vmap</code> runs it on thousands of games at once. That gets you a long way. It also hides a problem that most of this page is about. <code>vmap</code> runs every game in lockstep, so when one game has more work to do than the rest, the rest wait for it, and Catan has one rule that does exactly this.</p>
-  <p>This page is about how that wait went away, and what came after it. For the colonist recipe I train most, a training run that would take 153 hours on a plain JAX engine now takes about two. Almost every step of the way came down to asking two questions of each piece of work: does its cost depend on the slowest game in the batch, and can its result change anything at all?</p>
-  <p>The answer to the first question was to stop writing the engine for a batch and write it for one game, as a GPU kernel, the unit of code a GPU launches, that runs one small program per game. The first half of the page follows a move through that engine and then the rule that dominated its cost. The last two sections move up to the search that calls the engine, where the second question turned out to matter just as much.</p>
+  <p>This page is the story of making that engine fast, in the order it happened. The chart alongside follows it: each point is something I built, and its height is how many games a second self-play finishes with it. It starts near a hundred and ends near six thousand. Almost every step came down to asking two questions of some piece of work: does its cost depend on the slowest game in the batch, and can its result change anything at all?</p>
+</div>
+
+<div class="l-text" data-m="0">
+  <h2>A hundred games a second</h2>
+  <p>The obvious place to start is <a href="https://github.com/bcollazo/catanatron">catanatron</a>, the careful, standard Python implementation of Catan. On 16 CPU cores it plays about a hundred games a second, and that's with random players, no neural network to evaluate. Self-play with a network in the loop would be slower still. A training run needs millions of games, so a hundred a second wasn't going to work.</p>
+  <p>(I train on two rule sets: catanatron's, two players racing to 10 points, and colonist.io's 1v1 rules, first to 15, with dice that remember recent rolls. The chart follows catanatron's, with a trained network; colonist's numbers come up along the way.)</p>
 </div>
 
 <div class="l-text">
-  <h2>The board as arrays</h2>
-  <p>To a person, a Catan board is geometry: hexes, the corners where they meet, and the edges between corners. The engine needs none of the geometry, only what touches what. A board has 19 hexes, 54 corners and 72 edges, and a few small fixed tables record which corners surround each hex and which two corners each edge joins. With those tables, rules become lookups. "No settlement next to another settlement" turns into: look up the corner's neighbours and check whether any of them is occupied.</p>
-  <p>Everything that changes during a game fits in 46 arrays of fixed size: who owns each corner and edge, each player's hand, the development card deck, the dice history, and so on. That's about 465 integers. For the kernels, I pack them into one row of 512 integers, rounded up to a power of two because the kernel compiler wants one, which comes to 2 KB per game. Figure 1 lines up the two views. Hover over any part of the board, or any cell of the row.</p>
+  <h2>Moving to the GPU</h2>
+  <p>The usual way to go faster is to put the games on a GPU and run thousands at once. <a href="https://github.com/jax-ml/jax">JAX</a>, a Python library that compiles array code for accelerators through a compiler called XLA, makes this almost free: write the rules for one game as a pure function on arrays of fixed size, and <code>vmap</code> runs that function on a whole batch of games together.</p>
+  <p>That means turning the game into arrays. To a person, a Catan board is geometry: hexes, the corners where they meet, and the edges between corners. The engine needs none of the geometry, only what touches what. A board has 19 hexes, 54 corners and 72 edges, and a few small fixed tables record which corners surround each hex and which two corners each edge joins. With those tables, rules become lookups. "No settlement next to another settlement" turns into: look up the corner's neighbours and check whether any of them is occupied. Everything that changes during a game fits in 46 arrays, about 465 integers: who owns each corner and edge, each player's hand, the deck, the dice history. Later I pack them into one row of 512 integers, 2 KB per game. Figure 1 lines up the two views; hover over any part of the board or the row.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -155,82 +186,17 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
       <div class="inspector" id="insp1">Hover a tile, a node, an edge, or a cell in the row.</div>
     </div>
   </div></div>
-  <figcaption><b>Figure 1.</b> Left, the board with its corner and edge numbers, which match catanatron's exactly, so the two engines could be checked against each other move by move. Right, the same game as one packed row, 32 cells per line. Hovering a corner lights up every cell that refers to it. The position is a made-up example.</figcaption>
-</figure><div class="l-text">
-  <h2>One move inside the kernel</h2>
-  <p>A move arrives as a single number. The network chooses among 294 actions, laid out in blocks: one block for a settlement on each corner, one for a road on each edge, and so on. Playing a move means finding the block the number falls in, running that rule, and updating every part of the state it touches. A settlement, for instance, pays four resources to the bank, adds a victory point, and can cut an opponent's road in two.</p>
-  <p>My first GPU engine did this with <code>vmap</code> over a switch statement, one branch per kind of move. It was slow, and for a simple reason. A switch inside <code>vmap</code> can't actually branch, because each game in the batch wants a different branch, so XLA runs all thirteen branches for every game and keeps one result. Twelve of the thirteen branches' work is thrown away.</p>
-  <p>The version that worked is a <a href="https://jax.readthedocs.io/en/latest/pallas/index.html">Pallas</a> kernel that runs one small program per game. Pallas is JAX's way of writing your own GPU kernel; on NVIDIA GPUs it compiles through Triton, whose restrictions come up later. Each program reads its game's row, takes the one branch it needs, and writes the row back, all in one launch. Step through Figure 2, where Blue builds a settlement that cuts Orange's road. At the dispatch step, the toggle shows what the <code>vmap</code> version does instead.</p>
+  <figcaption><b>Figure 1.</b> Left, the board with its corner and edge numbers, which match catanatron's exactly, so the two engines could be checked against each other move by move. Right, the same game as one packed row of 512 integers, 32 cells per line. Hovering a corner lights up every cell that refers to it. The position is a made-up example.</figcaption>
+</figure><div class="l-text" data-m="1">
+  <p>With the network in the loop, the <code>vmap</code> engine finished 126 games a second on an A100. That's the second point on the chart, and it barely clears the first, which didn't even have a network to run. Thousands of games were running at once, and the GPU was getting almost nothing done. Why?</p>
 </div>
 
-<figure class="l-wide"><div class="frame">
-  <div class="split">
-    <div class="panel"><h3>Blue builds a settlement on node 9</h3><svg id="board2" class="board-svg"></svg></div>
-    <div class="panel">
-      <h3 id="move-title">Inside the engine kernel</h3>
-      <div id="move-stage"></div>
-      <svg id="row2" style="margin-top:12px"></svg>
-      <div class="log" id="log2" style="margin-top:10px"></div>
-    </div>
-  </div>
-  <div class="controls">
-    <button id="m-prev">◀ Back</button><button id="m-next">Next ▶</button><button id="m-play">▶ Play</button>
-    <span class="toggle" id="m-mode"><button data-v="kernel" class="on">Pallas kernel</button><button data-v="vmap">jax.vmap</button></span>
-    <span class="step-label" id="m-step"></span>
-  </div></div>
-  <figcaption id="cap2"></figcaption>
-</figure><div class="l-text">
-  <h2>What the GPU is doing</h2>
-  <p>Why doesn't one program per game run into the same lockstep problem as <code>vmap</code>? The answer is in how the GPU runs it. Each program runs as a single warp, 32 threads that execute each instruction together. (That isn't Triton's default; the next section is about why it has to be one.) Inside a program, an <code>if</code> is a real branch, because the whole warp is working on one game and agrees on which way to go. Two games taking different branches cost nothing extra, because they're different warps.</p>
-  <p>An A100 has 108 streaming multiprocessors (SMs), and each can hold up to 32 one-warp programs at once. That's up to 3,456 games in flight, so a batch of 4,096 runs in a little over one wave, and when a game finishes, its slot goes to the next game waiting. The whole batch is 8 MB of state, small enough to stay in the A100's 40 MB L2 cache. Figure 3 animates one step.</p>
-</div>
-
-<figure class="l-wide"><div class="frame">
-  <div class="split">
-    <div class="panel">
-      <h3>A100 · 108 SMs · each cell = one resident game</h3>
-      <svg id="chip"></svg>
-      <div><span class="stat">resident <b id="c-res">0</b></span><span class="stat">finished <b id="c-done">0</b> / 4096</span><span class="stat">wave <b id="c-wave">1</b></span></div>
-    </div>
-    <div class="panel">
-      <h3>One SM, zoomed in</h3>
-      <svg id="sm"></svg>
-      <h3 style="margin-top:12px">Where one game's data lives</h3>
-      <svg id="mem"></svg>
-    </div>
-  </div>
-  <div class="controls">
-    <button id="c-play">▶ Run batch</button><button id="c-reset">⟲ Reset</button>
-    <span class="toggle" id="c-warps"><button data-v="1" class="on">num_warps = 1</button><button data-v="4">num_warps = 4</button></span>
-    <span class="step-label">colors = action family each game is executing</span>
-  </div></div>
-  <figcaption><b>Figure 3.</b> A schematic of one engine step on 4,096 games. Each SM holds up to 32 one-warp programs and switches between them to hide memory latency. The toggle gives each program four warps instead: the SM's limit of 64 warps then fits only half as many games, and, as Figure 4 shows, the answers become wrong. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
-</figure><div class="l-text">
-  <h2>A race between warps</h2>
-  <p>Triton compiles a Pallas program to four warps by default. The engine code is scalar: it describes one game, so every thread does the same work, including the same read-modify-write on the same address. Take a counter that holds 5 and should become 6. Within one warp that's harmless, because all 32 threads read 5 together and all write 6. Separate warps, though, are scheduled independently. If three warps have already written 6 before the fourth does its read, the fourth reads 6, adds one, and writes 7.</p>
-  <p>In the engine kernel this corrupted about 11 games out of 4,096, different ones on every run. It never appeared at the small batch sizes I used while developing, only at the size I trained with. The fix is to run each program as a single warp. For a kernel that updates memory in place, the warp count is a correctness setting, and the default is the wrong one.</p>
-</div>
-
-<figure class="l-wide"><div class="frame">
-  <div class="split">
-    <div class="panel"><h3>Four warps, one program, one address</h3><svg id="warps"></svg></div>
-    <div class="panel">
-      <h3>One counter in global memory</h3>
-      <svg id="cellsvg"></svg>
-      <div class="log" id="log6" style="margin-top:10px;height:190px"></div>
-    </div>
-  </div>
-  <div class="controls">
-    <button id="w-reset">⟲ Reset</button><button id="w-next">Step ▶</button><button id="w-play">▶ Play</button>
-    <span class="toggle" id="w-mode"><button data-v="4" class="on">num_warps = 4</button><button data-v="1">num_warps = 1</button></span>
-    <span class="step-label" id="w-step"></span>
-  </div></div>
-  <figcaption><b>Figure 4.</b> One update should raise a counter from 5 to 6. With four warps and one running late, the late warp reads the 6 the others already wrote and stores 7. Step through it, then switch to one warp.</figcaption>
-</figure><div class="l-text">
-  <h2>Longest road</h2>
-  <p>Most of Catan's rules are cheap: a few lookups and some arithmetic. One isn't. The longest road card goes to the player with the longest continuous trail of roads, at least five long, that never uses a road twice and never passes through an opponent's settlement. Finding that trail is a search. On one straight road it's trivial. On a network with branches and loops, the number of trails to try grows quickly.</p>
-  <p>On average the search is cheap. The trouble is the spread: in one batch the average board needed 73 steps of the search and the worst needed 796, more than ten times as many. Under <code>vmap</code>, a loop like this runs in lockstep. The batch keeps iterating until its slowest board is done, so every game pays for 796 steps, and less than a tenth of that time is useful work. When I profiled the <code>vmap</code> engine, longest road was about 85% of the time per move.</p>
-  <p>I tried cheaper fixes first. Because <code>vmap</code> runs every branch of the switch, the search was running three times per step, once in each branch that could change a road; running it once instead made the whole step 2.8× faster. Searching only from a newly built road helped the usual case (more on that idea below). I also tried a closed-form count based on how many roads meet at each corner, and found networks where it overcounts, so it could never be exact. None of these touched the real problem: the batch still waited for its slowest board. Figure 5 shows what happens when it doesn't have to. Press Race.</p>
+<div class="l-text">
+  <h2>Everyone waits for the slowest game</h2>
+  <p>Profiling gave a clear answer. About 85% of the time went to one rule. The longest road card goes to the player with the longest continuous trail of roads, at least five long, that never uses a road twice and never passes through an opponent's settlement. Finding that trail is a search. On one straight road it's trivial; on a network with branches and loops, the number of trails to try grows quickly.</p>
+  <p>On average the search is cheap. The trouble is the spread: in one batch the average board needed 73 steps of the search and the worst needed 796, more than ten times as many. Under <code>vmap</code>, a loop like this runs in lockstep. The batch keeps iterating until its slowest board is done, so every game pays for 796 steps, and less than a tenth of that time is useful work. The rest of the batch is simply waiting.</p>
+  <p>Worse, the search ran three times per move. Moves were dispatched with a switch statement, one branch per kind of move, and a switch inside <code>vmap</code> can't actually branch, because each game wants a different branch. So XLA runs every branch for every game and keeps one result, and three of those branches could change a road network.</p>
+  <p>I tried cheap fixes first. Running the search once per move instead of three times made the whole step 2.8× faster. Searching only from a newly built road helped the usual case. A closed-form count based on how many roads meet at each corner turned out to overcount on some networks, so it could never be exact. None of these touched the real problem: the batch still waited for its slowest board. Figure 2 shows what happens when it doesn't have to. Press Race.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -247,11 +213,10 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     </div>
   </div>
   <div class="controls"><button id="r-play">▶ Race</button><button id="r-reset">⟲ Reset</button><span class="step-label">64 games · per-game cost drawn to match the measured mean 73 / max 796 node visits</span></div></div>
-  <figcaption><b>Figure 5.</b> Left, <code>vmap</code>: every game holds its slot until the slowest board (red) finishes; hatched lanes are done but still waiting. Right, one program per game: each search ends on its own, and the GPU starts the next game in the freed slot, so each color is a different game. Costs are drawn to match the measured average of 73 steps and maximum of 796.</figcaption>
+  <figcaption><b>Figure 2.</b> Left, <code>vmap</code>: every game holds its slot until the slowest board (red) finishes; hatched lanes are done but still waiting. Right, one program per game: each search ends on its own, and the GPU starts the next game in the freed slot, so each color is a different game. Costs are drawn to match the measured average of 73 steps and maximum of 796.</figcaption>
 </figure><div class="l-text">
-  <p>In the real engine, moving the search into the kernel made longest road 9.5–12× faster, at batches of 16,384 and 32,768 games, with identical results on 73,728 test positions.</p>
-  <p>Writing it as a kernel meant living inside Triton's restrictions: no scatter, no indexing into a vector with a computed index, and every array a power of two long. The search is a depth-first search with an explicit stack. Each entry on the stack, a frame, is one partial trail: the corner it has reached, its length, and which roads it has used. Two tricks make it fit.</p>
-  <p>First, a frame packs into one 32-bit integer: 6 bits for the corner (54 corners fit in 64), 5 for the length, and 16 for which of the player's road slots are used (a player owns at most 15 roads). So the whole stack is a vector of 32 integers. Second, the push. Popping a frame produces a few candidate extensions, and each valid one should land in the next free slot. Normally you'd compute each candidate's slot and scatter it there, but Triton has no scatter, so the push runs backwards: each of the 32 slots compares every candidate's target position with its own index and copies the one that matches. Figure 6 runs the search on Orange's roads after Blue's settlement.</p>
+  <p>The right-hand side is a GPU kernel, the unit of code a GPU launches, that runs one small program per game. I wrote it in <a href="https://jax.readthedocs.io/en/latest/pallas/index.html">Pallas</a>, JAX's way of writing your own kernel, which on NVIDIA GPUs compiles through Triton. That meant living inside Triton's restrictions: no scatter, no indexing into a vector with a computed index, and every array a power of two long.</p>
+  <p>The search is a depth-first search with an explicit stack. Each entry on the stack, a frame, is one partial trail: the corner it has reached, its length, and which roads it has used. Two tricks make it fit. First, a frame packs into one 32-bit integer: 6 bits for the corner (54 corners fit in 64), 5 for the length, and 16 for which of the player's road slots are used (a player owns at most 15 roads). So the whole stack is a vector of 32 integers. Second, the push. Popping a frame produces a few candidate extensions, and each valid one should land in the next free slot. Normally you'd compute each candidate's slot and scatter it there, but Triton has no scatter, so the push runs backwards: each of the 32 slots compares every candidate's target position with its own index and copies the one that matches. Figure 3 runs the search on a real cut.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -275,11 +240,85 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <button id="d-reset">⟲ Reset</button><button id="d-next">Step ▶</button><button id="d-play">▶ Play</button>
     <span class="step-label" id="d-step"></span>
   </div></div>
-  <figcaption><b>Figure 6.</b> The search on Orange's roads after Blue settles on corner 9. The stack starts with every corner of Orange's network, then repeatedly pops a frame, extends it along unused roads and pushes the results. It never steps into a corner an opponent occupies, so corner 9 splits the network and Orange's longest road drops from 7 to 4. The matrix at the bottom shows which slot takes which candidate on each push.</figcaption>
+  <figcaption><b>Figure 3.</b> The search on Orange's roads after Blue settles on corner 9. The stack starts with every corner of Orange's network, then repeatedly pops a frame, extends it along unused roads and pushes the results. It never steps into a corner an opponent occupies, so corner 9 splits the network and Orange's longest road drops from 7 to 4. The matrix at the bottom shows which slot takes which candidate on each push.</figcaption>
+</figure><div class="l-text" data-m="2">
+  <p>The kernel made longest road 9.5–12× faster at batches of 16,384 and 32,768 games, with identical results on 73,728 test positions. Self-play jumped to 1,032 games a second, eight times the <code>vmap</code> engine.</p>
+</div>
+
+<div class="l-text">
+  <h2>One program for the whole move</h2>
+  <p>If one program per game fixed longest road, why not do the whole move that way? Every other rule still ran through the <code>vmap</code> switch, which runs all thirteen branches for every game and keeps one.</p>
+  <p>A move arrives as a single number. The network chooses among 294 actions, laid out in blocks: one block for a settlement on each corner, one for a road on each edge, and so on. Playing a move means finding the block the number falls in, running that rule, and updating every part of the state it touches. A settlement pays four resources to the bank, adds a victory point, and can cut an opponent's road in two. The fused kernel does all of it in one launch: each program reads its game's 512-integer row, takes the one branch it needs, runs the longest-road search only if the move requires it, and writes the row back. Step through Figure 4, where Blue builds a settlement that cuts Orange's road. At the dispatch step, the toggle shows what the <code>vmap</code> version does instead.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Blue builds a settlement on node 9</h3><svg id="board2" class="board-svg"></svg></div>
+    <div class="panel">
+      <h3 id="move-title">Inside the engine kernel</h3>
+      <div id="move-stage"></div>
+      <svg id="row2" style="margin-top:12px"></svg>
+      <div class="log" id="log2" style="margin-top:10px"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="m-prev">◀ Back</button><button id="m-next">Next ▶</button><button id="m-play">▶ Play</button>
+    <span class="toggle" id="m-mode"><button data-v="kernel" class="on">Pallas kernel</button><button data-v="vmap">jax.vmap</button></span>
+    <span class="step-label" id="m-step"></span>
+  </div></div>
+  <figcaption id="cap2"></figcaption>
 </figure><div class="l-text">
-  <h2>Searching only what changed</h2>
-  <p>With the kernel in place I profiled again. Late in the game, longest road was back at about 85% of the time, the same share it had under <code>vmap</code>. This was the lockstep problem again, in a new form. Figure 5's fix only helps when there's a queue of games waiting to take a freed slot. The profile used 1,024 games, which fit on the A100 all at once, so there was no queue: games that finished early left their slots empty, and the launch still took as long as its slowest game. The slowest game was whichever one had just built a road onto the biggest network, and on every road build the kernel searched that whole network from scratch.</p>
-  <p>It didn't need to. A new road can only create trails that run through it; every other trail existed before. So the new longest road is the larger of the old one and the longest trail through the new road, and only a settlement that cuts a road needs a full search. My XLA engine already worked this way. When I wrote the kernel, I had ported the full search instead.</p>
+  <p>Why doesn't one program per game hit the lockstep problem? The answer is in how the GPU runs it. Each program runs as a single warp, 32 threads that execute each instruction together. (That isn't Triton's default; more on that in a moment.) Inside a program, an <code>if</code> is a real branch, because the whole warp is working on one game and agrees on which way to go. Two games taking different branches cost nothing extra, because they're different warps. An A100 has 108 streaming multiprocessors (SMs), and each can hold up to 32 one-warp programs, so up to 3,456 games are in flight at once, and when one finishes, its slot goes to the next game waiting. Figure 5 animates one step.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel">
+      <h3>A100 · 108 SMs · each cell = one resident game</h3>
+      <svg id="chip"></svg>
+      <div><span class="stat">resident <b id="c-res">0</b></span><span class="stat">finished <b id="c-done">0</b> / 4096</span><span class="stat">wave <b id="c-wave">1</b></span></div>
+    </div>
+    <div class="panel">
+      <h3>One SM, zoomed in</h3>
+      <svg id="sm"></svg>
+      <h3 style="margin-top:12px">Where one game's data lives</h3>
+      <svg id="mem"></svg>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="c-play">▶ Run batch</button><button id="c-reset">⟲ Reset</button>
+    <span class="toggle" id="c-warps"><button data-v="1" class="on">num_warps = 1</button><button data-v="4">num_warps = 4</button></span>
+    <span class="step-label">colors = action family each game is executing</span>
+  </div></div>
+  <figcaption><b>Figure 5.</b> A schematic of one engine step on 4,096 games. Each SM holds up to 32 one-warp programs and switches between them to hide memory latency. The toggle gives each program four warps instead: the SM's limit of 64 warps then fits only half as many games, and, as Figure 6 shows, the answers become wrong. <span class="pill">schematic: real residency also depends on registers per thread</span></figcaption>
+</figure><div class="l-text">
+  <p>Triton compiles a program to four warps by default, and the first version of this kernel used the default. The engine code is scalar: it describes one game, so every thread does the same work, including the same read-modify-write on the same address. Take a counter that holds 5 and should become 6. Within one warp that's harmless, because all 32 threads read 5 together and all write 6. Separate warps, though, are scheduled independently. If three warps have already written 6 before the fourth does its read, the fourth reads 6, adds one, and writes 7.</p>
+  <p>That corrupted about 11 games out of 4,096, different ones on every run, and it never showed up at the small batch sizes I tested with. The fix is one warp per program. For a kernel that updates memory in place, the warp count is a correctness setting, and the default is the wrong one.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Four warps, one program, one address</h3><svg id="warps"></svg></div>
+    <div class="panel">
+      <h3>One counter in global memory</h3>
+      <svg id="cellsvg"></svg>
+      <div class="log" id="log6" style="margin-top:10px;height:190px"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="w-reset">⟲ Reset</button><button id="w-next">Step ▶</button><button id="w-play">▶ Play</button>
+    <span class="toggle" id="w-mode"><button data-v="4" class="on">num_warps = 4</button><button data-v="1">num_warps = 1</button></span>
+    <span class="step-label" id="w-step"></span>
+  </div></div>
+  <figcaption><b>Figure 6.</b> One update should raise a counter from 5 to 6. With four warps and one running late, the late warp reads the 6 the others already wrote and stores 7. Step through it, then switch to one warp.</figcaption>
+</figure><div class="l-text" data-m="3">
+  <p>With the whole move in one kernel, self-play reached 2,697 games a second, 2.6× the version with only the longest-road kernel. A catanatron training run that would have taken 49 hours on the <code>vmap</code> engine now took about two and a half.</p>
+</div>
+
+<div class="l-text">
+  <h2>The road, again</h2>
+  <p>I profiled again. Late in the game, longest road was back at about 85% of the time, the same share it had under <code>vmap</code>. This was the lockstep problem again, in a new form. Figure 2's fix only helps when there's a queue of games waiting to take a freed slot. The profile used 1,024 games, which fit on the A100 all at once, so there was no queue: games that finished early left their slots empty, and the launch still took as long as its slowest game. The slowest game was whichever one had just built a road onto the biggest network, and on every road build the kernel searched that whole network from scratch.</p>
+  <p>It didn't need to. A new road can only create trails that run through it; every other trail existed before. So the new longest road is the larger of the old one and the longest trail through the new road, and only a settlement that cuts a road needs a full search. That was the cheap fix from earlier, which my XLA engine already used; when I wrote the kernel, I had ported the full search instead.</p>
   <p>A trail through the new road extends from both of its ends. The search grows the trail from one end, then switches once and grows it from the other, never reusing a road. Switching exactly once keeps it from counting the same trail several times. Figure 7 steps through it on Orange joining its two chains.</p>
 </div>
 
@@ -299,30 +338,7 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
   </div></div>
   <figcaption><b>Figure 7.</b> The search for a road build, starting from the new road (dashed). Violet is the part grown from one end, teal the part grown from the other after the switch. The counter compares its number of steps with the full search on the same board.</figcaption>
 </figure><div class="l-text">
-  <p>That still does more sequential work than it should. For every way of extending the first end, it explores every way of extending the second again, so its work grows like the product of the two. But the two ends only interact through one question: do they use the same road?</p>
-  <p>So the current kernel splits the work. Call each trail grown outward from one end an arm. The kernel lists every arm from each end once, into two lists of up to 32, storing each arm as its length and a bitmask of the roads it uses. Two arms join into a valid trail exactly when their masks share no bit, which is one bitwise AND. If one end has 5 arms and the other has 4, the old search walked about 5 × 4 combinations one after another; the new one walks 5 + 4 arms and then tests all 20 pairs at once. Even the full 32 × 32 grid is one vectorized pass over the warp's 32 threads: ANDs to find pairs that share a road, then a maximum over the pairs that don't.</p>
-  <p>One rule needs care. Like catanatron, the search never steps onto a corner held by an opponent, but a trail may start at one. So only one end of a trail can sit on an opponent's settlement, and two arms that both end on one don't pair.</p>
-  <p>The board's shape keeps the lists short. Every corner has at most three roads, and one of them is the road a trail arrived on, so a trail branches at most two ways at each step. In real self-play no end ever had more than 21 arms, comfortably under 32. If a list did overflow, the kernel would fall back to the old search, so the answer is always exact. Hover over a cell in Figure 8 to see the trail it stands for.</p>
-</div>
-
-<figure class="l-wide"><div class="frame">
-  <div class="split">
-    <div class="panel"><h3>Orange builds the road joining its two chains</h3><svg id="board-arms" class="board-svg"></svg></div>
-    <div class="panel">
-      <h3>Every arm from u × every arm from v · cell = trail length</h3>
-      <svg id="arms-grid"></svg>
-      <div class="kv" id="arms-kv" style="margin-top:10px"></div>
-    </div>
-  </div></div>
-  <figcaption><b>Figure 8.</b> The same board as Figure 7. Rows are arms from one end of the new road (violet), columns arms from the other end (teal). A green cell is a valid pair, and its number is the trail's total length including the new road. The outlined cell is the longest.</figcaption>
-</figure><div class="l-text">
-  <p>On real self-play road builds, pairing the arms cut the average search from 11.4 steps (the search of Figure 7) to 7.2, and the worst game's from 134 to 38. The full search now runs only when a settlement cuts a road. The kernel matched the reference engine on every test, including 196,608 games forced to build a road or a settlement.</p>
-</div>
-
-<div class="l-text">
-  <h2>The whole engine step</h2>
-  <p>The same profiles pointed at one more piece still written in plain XLA: the mask of legal moves, which the network needs before every search. It compiled to 27 separate GPU kernels, all to do a few dozen comparisons per game. Rewritten as one Pallas program per game, it's about five times faster.</p>
-  <p>How much did all of this buy? Figure 9 times one step at four points in a game.</p>
+  <p>The same profiles pointed at one more piece still written in plain XLA: the mask of legal moves, which the network needs before every search. It compiled to 27 separate GPU kernels, all to do a few dozen comparisons per game. Rewritten as one Pallas program per game, it's about five times faster. Figure 8 times both changes on the engine alone, at four points in a game.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -330,10 +346,9 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <div class="panel"><h3>Engine step · colonist · ms per 1,024-game step</h3><svg id="time-step"></svg></div>
     <div class="panel"><h3>Whole simulation step (engine step + legal mask) · colonist</h3><svg id="time-total"></svg></div>
   </div></div>
-  <figcaption><b>Figure 9.</b> One step of 1,024 colonist games on an A100, with no network. Left, the engine step alone; right, the engine plus the legal-move mask. Medians of three runs.</figcaption>
+  <figcaption><b>Figure 8.</b> One step of 1,024 colonist games on an A100, with no network. Left, the engine step alone; right, the engine plus the legal-move mask. Medians of three runs.</figcaption>
 </figure><div class="l-text">
-  <p>Searching only through the new road makes the engine step 1.9× faster late in the game. With the faster mask on top, the whole simulation step is 1.5–2.2× faster than before at every stage of a game, and 5–9× faster than plain XLA.</p>
-  <p>Figure 10 splits a step into its parts, before and after. The legal-move mask goes from about half of the step to a tenth, and longest road nearly disappears, except in the largest late-game networks. The biggest piece left is, of all things, drawing random numbers for dice rolls and steals, which still happens in plain XLA before the kernel runs.</p>
+  <p>Searching only through the new road makes the engine step 1.9× faster late in the game. With the faster mask on top, the whole simulation step is 1.5–2.2× faster at every stage of a game, and 5–9× faster than plain XLA. Figure 9 splits a step into its parts, before and after: the mask goes from about half of the step to a tenth, and longest road nearly disappears except in the largest late-game networks.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -343,13 +358,16 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="bd-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
     <span class="step-label">hover a segment for its time</span>
   </div></div>
-  <figcaption><b>Figure 10.</b> One step of 1,024 games on an A100, with no network. In each pair the left bar is before (XLA legal-move mask and the full longest-road search) and the right bar after. Each part was timed by switching it off. Hover over a segment for its time.</figcaption>
-</figure><div class="l-text">
+  <figcaption><b>Figure 9.</b> One step of 1,024 games on an A100, with no network. In each pair the left bar is before and the right bar after. Each part was timed by switching it off. Hover over a segment for its time.</figcaption>
+</figure><div class="l-text" data-m="4">
+  <p>With the network in the loop the gain is smaller, because the engine is now a smaller part of each step: self-play went to about 3,060 games a second. That smaller gain was the sign that the engine was no longer the main cost.</p>
+</div>
+
+<div class="l-text">
   <h2>Skipping work that can't matter</h2>
-  <p>Once the engine was fast, the bottleneck moved up to the search that calls it. For each position, self-play builds its training target with a one-ply search. It takes the 16 moves the network rates highest, plays each one on a copy of the game, and asks the network how good each resulting position is. Those 16 values, blended with the network's own preferences, become the target the network learns from, and the move actually played is sampled from that target. With 2,048 games in a batch, that's 32,768 positions to step and evaluate per move, and evaluating them was the largest single cost in self-play.</p>
-  <p>This is where the second question from the start of the page comes in. A program with fixed shapes does work for every slot, whether or not that work can matter, and many of those 16 values can't. If a position has fewer than 16 legal moves, the extra slots are padding. If it has only one legal move, which in Catan is common (rolling the dice, ending a turn), the target is that move with probability 1 whatever the values say. And when rolling is one of several options, the search doesn't trust a single random roll: it replaces that slot's value with an exact average over the 11 dice totals, so the network's evaluation of the one roll in the slot is never used. Measured on real self-play, only 21% of the slots matter in colonist, and 35% in catanatron. In colonist, about four of every five evaluations were wasted.</p>
-  <p>The obvious fix is to evaluate only those. The catch is that a compiled JAX program has fixed shapes; it can't call the network on however many rows happen to matter this step. The standard way around this is packing, also called stream compaction. Set aside a buffer smaller than the batch. Number the slots that matter 0, 1, 2 and so on with a prefix sum, which is just a running count. Copy each one into its buffer row, fill any leftover rows with harmless copies, evaluate the buffer, and write each result back to the slot it came from. If more slots matter than the buffer holds, run it again on the rest. The answer doesn't change; overflowing only costs another round.</p>
-  <p>What does that look like on a small batch? Figure 11 has six games with four candidates each. Step through the three cases.</p>
+  <p>The bottleneck had moved up to the search that calls the engine. For each position, self-play builds its training target with a one-ply search. Searching all 294 actions would be wasteful, so it takes only the 16 moves the network rates highest, plays each one on a copy of the game, and asks the network how good each resulting position is. Those 16 values, blended with the network's own preferences, become the target the network learns from, and the move actually played is sampled from that target. With 2,048 games in a batch, that's 32,768 positions to step and evaluate per move, the largest single cost left in self-play.</p>
+  <p>This is where the second question comes in. A program with fixed shapes does work for every slot, whether or not that work can matter, and many of those 16 values can't. If a position has fewer than 16 legal moves, the extra slots are padding. If it has only one legal move, which in Catan is common (rolling the dice, ending a turn), the target is that move with probability 1 whatever the values say. And when rolling is one of several options, the search doesn't trust a single random roll: it replaces that slot's value with an exact average over the 11 dice totals, so the network's evaluation of the one roll in the slot is never used. Measured on real self-play, only 35% of the slots matter in catanatron, and 21% in colonist. In colonist, about four of every five evaluations were wasted.</p>
+  <p>The obvious fix is to evaluate only those. The catch is that a compiled JAX program has fixed shapes; it can't call the network on however many rows happen to matter this step. The standard way around this is packing, also called stream compaction. Set aside a buffer smaller than the batch. Number the slots that matter 0, 1, 2 and so on with a prefix sum, which is just a running count. Copy each one into its buffer row, fill any leftover rows with harmless copies, evaluate the buffer, and write each result back to the slot it came from. If more slots matter than the buffer holds, run it again on the rest. The answer doesn't change; overflowing only costs another round. What does that look like on a small batch? Figure 10 has six games with four candidates each. Step through the three cases.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -361,9 +379,9 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <button id="pw-reset">⟲ Reset</button><button id="pw-next">Step ▶</button><button id="pw-play">▶ Play</button>
     <span class="step-label" id="pw-step"></span>
   </div></div>
-  <figcaption><b>Figure 11.</b> Each column is a game and each cell one of its candidate moves. Without packing, the network evaluates all 24 rows, 17 of which can't affect the result. When the needed slots fit (7 of them, early in a game), one pass over an 8-row buffer handles them. When they overflow (14, later in a game), the loop runs twice: still exact, but now 16 rows.</figcaption>
+  <figcaption><b>Figure 10.</b> Each column is a game and each cell one of its candidate moves. Without packing, the network evaluates all 24 rows, 17 of which can't affect the result. When the needed slots fit (7 of them, early in a game), one pass over an 8-row buffer handles them. When they overflow (14, later in a game), the loop runs twice: still exact, but now 16 rows.</figcaption>
 </figure><div class="l-text">
-  <p>At full scale it looks the same with more cells. Figure 12 packs 32 games of 16 candidates each, drawn to match the fractions measured in self-play, into a buffer of 40% of the slots.</p>
+  <p>At full scale it looks the same with more cells. Figure 11 packs 32 games of 16 candidates each, drawn to match the fractions measured in self-play, into a buffer of 40% of the slots.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -375,16 +393,15 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="pk-rules"><button data-v="colonist" class="on">colonist</button><button data-v="catanatron">catanatron</button></span>
     <span class="step-label">hover a cell for its role</span>
   </div></div>
-  <figcaption><b>Figure 12.</b> Each column is a game and each cell one of its 16 candidate slots. Only the blue cells, real moves in games with a choice, are stepped and evaluated; Pack moves them in order into the buffer. <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
-</figure><div class="l-text">
-  <p>The 40% came from measurement: colonist needs 21.5% of the slots on average and 25% at most, catanatron 35% and 38% at most. At 30%, catanatron overflowed into a second pass on most steps, and at 10% the extra passes cost more than they saved. Packing took self-play from 832 to 1,307 games a second on colonist, and from 3,057 to 4,166 on catanatron.</p>
+  <figcaption><b>Figure 11.</b> Each column is a game and each cell one of its 16 candidate slots. Only the blue cells, real moves in games with a choice, are stepped and evaluated; Pack moves them in order into the buffer. <span class="pill">schematic batch drawn to match the measured fractions</span></figcaption>
+</figure><div class="l-text" data-m="5">
+  <p>The 40% came from measurement: catanatron needs 35% of the slots on average and 38% at most, colonist 21.5% and 25%. At 30%, catanatron overflowed into a second pass on most steps, and at 10% the extra passes cost more than they saved. Packing took catanatron self-play from 3,057 to 4,166 games a second, and colonist from 832 to 1,307.</p>
 </div>
 
 <div class="l-text">
   <h2>Same input, different output</h2>
   <p>Packing changes one thing the engine never touched: the shape of the batch the network sees. It should change nothing else, so I compared packed and unpacked self-play directly. A quarter of the policy targets were different. I traced it to the network itself. In that test one packed buffer held 204 positions, and the same 204 positions evaluated on their own, and as the first 204 rows of a 512-row batch, gave values that differed by 0.018, on a value that runs from −1 to 1. That's several times the rounding error of one matrix multiply in bf16, the 16-bit format the network computes in, which keeps only about three significant digits. At first I didn't believe it was rounding at all.</p>
-  <p>It was rounding, compounded. A GPU matrix multiply is split into output tiles, and the SMs work on tiles in parallel. With a few hundred rows there aren't enough tiles to keep 108 SMs busy, so XLA also splits each 256-long dot product into four pieces of 64, which different SMs can work on, and adds the partial sums in fp32. On that path it never rounds the layer's output back to bf16. At 512 rows there are enough tiles, so XLA uses a single matrix multiply, which does round. Either way the value is correct to bf16 precision, but the two can differ by up to half a unit in the last place, in every element of every layer, and the residual connections carry that forward and add to it.</p>
-  <p>Where does 0.018 come from? Figure 13 follows the difference through the network, layer by layer.</p>
+  <p>It was rounding, compounded. A GPU matrix multiply is split into output tiles, and the SMs work on tiles in parallel. With a few hundred rows there aren't enough tiles to keep 108 SMs busy, so XLA also splits each 256-long dot product into four pieces of 64 and adds the partial sums in fp32, and on that path it never rounds the layer's output back to bf16. At 512 rows it uses a single matrix multiply, which does round. Either answer is correct to bf16 precision, but the two can differ by up to half a unit in the last place, in every element of every layer, and the residual connections carry that forward and add to it. Figure 12 follows the difference through the network, layer by layer.</p>
 </div>
 
 <figure class="l-wide"><div class="frame">
@@ -400,30 +417,75 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <span class="toggle" id="inv-mode"><button data-v="on" class="on">split-K on (default)</button><button data-v="off">split-K off for self-play</button></span>
     <span class="step-label">hover a point for its value</span>
   </div></div>
-  <figcaption><b>Figure 13.</b> The same 204 positions through a fresh 256×4 catanatron network, alone and as part of 512 rows, on an A100 with jaxlib 0.10.2. Left, the largest difference after each layer. The toggle turns off XLA's splitting pass. Right, what XLA compiles for one 256 → 256 layer at each size.</figcaption>
+  <figcaption><b>Figure 12.</b> The same 204 positions through a fresh 256×4 catanatron network, alone and as part of 512 rows, on an A100 with jaxlib 0.10.2. Left, the largest difference after each layer. The toggle turns off XLA's splitting pass. Right, what XLA compiles for one 256 → 256 layer at each size.</figcaption>
 </figure><div class="l-text">
   <p>The difference starts at exactly half a unit in the last place after the first layer and grows to 0.018 at the value. The search's target adds 50 times the value to the network's logits, so 0.018 becomes 0.9, most of a logit, which is enough to reorder close moves. The obvious switches don't help. XLA's deterministic mode makes one shape repeatable but doesn't make two shapes agree, and running the network in fp32 removes most of the gap but not all of it, because the four partial sums are still added in a different order. With the splitting pass turned off, every layer matches exactly at every batch size of 128 rows or more.</p>
-  <p>Fixing that uncovered two smaller cases of the same thing. On colonist, XLA computed the value head's <code>tanh</code> twice, once in the normal place and again inside another fused kernel, and the two implementations can disagree in the last bit. That would normally be harmless, but colonist rescales values per position, and that magnified the one-bit difference about a thousandfold. Separately, with fewer than about 120 rows, XLA sums the normalization layers in a different order.</p>
-  <p>The fixes were to turn off the splitting pass when compiling self-play (training keeps it, because it needs it), to put an optimization barrier on the value output so it's computed once, and never to pack fewer than 128 rows. After that, packed and unpacked self-play agree bit for bit.</p>
-  <p>The unpacked code, it turned out, had never been batch-invariant either. Searching 16 games on their own, instead of as part of a batch of 64, changed its policy targets by up to 0.10. Nothing in the original code was wrong; the same rounding had just never been looked at.</p>
+  <p>Fixing that uncovered two smaller cases of the same thing. On colonist, XLA computed the value head's <code>tanh</code> twice, once in the normal place and again inside another fused kernel, and the two implementations can disagree in the last bit; colonist rescales values per position, which magnified that one bit about a thousandfold. And with fewer than about 120 rows, XLA sums the normalization layers in a different order. The fixes were to turn off the splitting pass when compiling self-play (training keeps it, because it needs it), to put an optimization barrier on the value output so it's computed once, and never to pack fewer than 128 rows. After that, packed and unpacked self-play agree bit for bit.</p>
+  <p>The unpacked code, it turned out, had never been batch-invariant either. Searching 16 games on their own, instead of as part of a batch of 64, changed its policy targets by up to 0.10. Nothing in it was wrong; the same rounding had just never been looked at.</p>
+</div>
+
+<div class="l-text">
+  <h2>The road, one more time</h2>
+  <p>With the search packed, the engine was a large share of the step again, so I profiled it once more, this time timing stubbed-out versions of the kernel piece by piece. The first surprise was that a fixed 0.13 ms every move seemed to pay was mostly not the kernel at all: 40% was drawing the dice and steal random numbers in plain XLA, and 17% was my own measuring harness. The real cost, on the candidates the search actually steps, was the longest-road search again, about 80% of the kernel.</p>
+  <p>Two changes fixed most of it. The first was embarrassing. Triton wants power-of-two vectors, so the 72 edges live in a 128-wide vector, and my bitmask helper made 31-bit pieces for all 128 positions: five pieces where three cover the board. The used-road set rides in every stack frame of the search, so every push and pop moved two pieces of nothing. Sizing the masks to the real board cut the kernel's time by 20%.</p>
+  <p>The second was a better search for road builds. The two-ended search of Figure 7 still does more sequential work than it should: for every way of extending the first end, it explores every way of extending the second again, so its work grows like the product of the two. But the two ends only interact through one question: do they use the same road?</p>
+  <p>So the kernel now splits the work. Call each trail grown outward from one end an arm. The kernel lists every arm from each end once, into two lists of up to 32, storing each arm as its length and a bitmask of the roads it uses. Two arms join into a valid trail exactly when their masks share no bit, which is one bitwise AND. If one end has 5 arms and the other has 4, the old search walked about 5 × 4 combinations one after another; the new one walks 5 + 4 arms and then tests all 20 pairs at once. Even the full 32 × 32 grid is one vectorized pass over the warp's 32 threads.</p>
+  <p>One rule needs care. Like catanatron, the search never steps onto a corner held by an opponent, but a trail may start at one, so only one end of a trail can sit on an opponent's settlement, and two arms that both end on one don't pair. The board's shape keeps the lists short: every corner has at most three roads, and one of them is the road a trail arrived on, so a trail branches at most two ways at each step. In real self-play no end ever had more than 21 arms, comfortably under 32. If a list did overflow, the kernel would fall back to the old search, so the answer is always exact. Hover over a cell in Figure 13 to see the trail it stands for.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="split">
+    <div class="panel"><h3>Orange builds the road joining its two chains</h3><svg id="board-arms" class="board-svg"></svg></div>
+    <div class="panel">
+      <h3>Every arm from u × every arm from v · cell = trail length</h3>
+      <svg id="arms-grid"></svg>
+      <div class="kv" id="arms-kv" style="margin-top:10px"></div>
+    </div>
+  </div></div>
+  <figcaption><b>Figure 13.</b> The same board as Figure 7. Rows are arms from one end of the new road (violet), columns arms from the other end (teal). A green cell is a valid pair, and its number is the trail's total length including the new road. The outlined cell is the longest.</figcaption>
+</figure><div class="l-text" data-m="6">
+  <p>On real road builds, pairing the arms cut the average search from 11.4 steps to 7.2, and the worst game's from 134 to 38. Together with the smaller masks, self-play went from 4,166 to 4,575 games a second, and Gumbel MCTS, which steps the engine 64 times a move, got 9% faster too.</p>
+</div>
+
+<div class="l-text">
+  <h2>Only roll the dice that matter</h2>
+  <p>The profile had one more large item, and it was the search's dice. When rolling is a candidate, the search builds all 11 outcome positions and evaluates them with the network, so it can use the exact average. It did this for every game on every move: 2,048 × 11 = 22,528 extra positions, more than the candidates themselves. But the average only matters when rolling competes with another candidate. If rolling is the only option, the softmax over one entry is 1 anyway. That's about 12% of catanatron games, and only about 1% of colonist games.</p>
+  <p>So this is packing again, by game instead of by slot. My first attempt gained almost nothing: 0.9% on colonist. It sized the buffer for half the games, to be safe, and that turned out to be most of the cost. At these sizes the work is dominated by fixed overhead per launch: the network takes 0.12 ms on 132 rows and only 0.79 ms on 22,528, 170 times the rows for 6.4 times the time. A buffer of a thousand games for twenty that need it still pays about two thirds of the full price. Sized to the real need, 15% of games for catanatron and 2% for colonist, it takes 19–20% off every self-play step. One size can't serve both rule sets: at 2%, catanatron overflows into about six passes a step and ends up slower than not packing at all.</p>
+  <p>The exactness check caught one more case of a shape changing: in the unpacked program, XLA had merged the root positions' network call with the dice call, since they share weights, and packing the dice broke that merge. The fix was to turn off that merging pass for self-play too.</p>
+</div>
+
+<div class="l-text" data-m="7">
+  <p>Self-play reached 5,687 games a second, another 1.24× on top of everything before it.</p>
 </div>
 
 <div class="l-text">
   <h2>Where this leaves things</h2>
-  <p>The bottleneck moved four times: from the switch statement, to longest road, to the legal-move mask, to the search's calls into the network. Each fix answered one of the two questions this page started with.</p>
+  <p>From a hundred games a second on a CPU without a network to 5,687 with one, on a single GPU. A catanatron training run that would take 49 hours on the <code>vmap</code> engine now takes about an hour and ten minutes, and a colonist run that would take 153 hours takes under two. The bottleneck moved again and again: from the switch statement to longest road, from the engine to the search, from the search back to the engine. Each fix answered one of the same two questions.</p>
   <table class="recap">
-    <tr><th>Bottleneck</th><th>Fix</th><th>Effect</th></tr>
-    <tr><td>Switch over 13 kinds of move under <code>vmap</code></td><td>One Pallas program per game, one real branch</td><td>engine step 4.0× faster (5.2× on catanatron rules)</td></tr>
-    <tr><td>Longest road, waiting on the slowest board</td><td>Per-game search in the kernel</td><td>9.5–12× faster search</td></tr>
-    <tr><td>Searching the whole network on every road build</td><td>Search only through the new road, then pair the two ends across the warp</td><td>1.9× faster late-game step; worst search 134 → 38 steps</td></tr>
-    <tr><td>Legal-move mask as 27 XLA kernels</td><td>One Pallas program per game</td><td>about 5× faster mask</td></tr>
-    <tr><td>Evaluating search candidates that can't matter</td><td>Packing, sized from measured need</td><td>self-play 1.57× faster</td></tr>
+    <tr><th>Bottleneck</th><th>Fix</th><th>Self-play, catanatron</th></tr>
+    <tr><td>Python engine on a CPU</td><td>Rules as arrays, <code>vmap</code> on a GPU</td><td>126 games/s</td></tr>
+    <tr><td>Every game waits for the slowest longest-road search</td><td>One program per game for the search</td><td>1,032</td></tr>
+    <tr><td>A switch that runs all 13 kinds of move</td><td>One program per game for the whole move</td><td>2,697</td></tr>
+    <tr><td>Searching the whole road network on every road build; a legal-move mask spread over 27 kernels</td><td>Search only through the new road; one Pallas program for the mask</td><td>about 3,060</td></tr>
+    <tr><td>Evaluating search candidates that can't matter</td><td>Packing, sized from measured need</td><td>4,166</td></tr>
+    <tr><td>Padded bitmasks; a search that multiplies its two ends</td><td>Masks sized to the board; pair the arms across the warp</td><td>4,575</td></tr>
+    <tr><td>Dice outcomes evaluated for every game</td><td>Pack the dice, by game</td><td>5,687</td></tr>
   </table>
-  <p>What's left is mostly not in the engine. Most of a self-play step is now the network, and more than half of the positions that colonist self-play searches have only one legal move. Playing those moves inside the engine kernel, instead of searching them, is the experiment I'm running next. Speed roughly doubles. What I don't know yet is whether the agent learns as well when those positions are no longer part of its training data.</p>
+  <p>What's left is mostly not in the engine. Most of a self-play step is now the network, and more than half of the positions colonist self-play searches have only one legal move. Playing those moves inside the engine kernel, instead of searching them, is the experiment I'm running next. Speed roughly doubles. What I don't know yet is whether the agent learns as well when those positions are no longer part of its training data.</p>
 </div>
 
+</main>
+<aside class="story-aside" aria-label="Self-play speed as the story goes">
+  <div class="sc-head">Self-play speed · catanatron</div>
+  <div class="sc-value"><span id="sc-gps">—</span> <span class="sc-unit">games/s</span></div>
+  <div class="sc-label" id="sc-label">Scroll to start</div>
+  <svg id="sc-chart"></svg>
+  <ol class="sc-list" id="sc-list"></ol>
+  <div class="sc-note">A100, trained 256×4 network, one-ply search. The first point is catanatron's Python engine on 16 CPU cores, playing without a network.</div>
+</aside>
+</div>
 <footer>
-  Draft for the catanax blog series. The board topology and state layout come from <span class="mono">catanax/engine/board_constants.py</span> and <span class="mono">GameState</span>, and the timings from the repository's benchmarks on an A100-SXM4-40GB. Figures 3, 5, 11 and 12 are schematics; the others are measured or computed from the engine's own tables.
+  Draft for the catanax blog series. The board topology and state layout come from <span class="mono">catanax/engine/board_constants.py</span> and <span class="mono">GameState</span>, and the timings from the repository's benchmarks on an A100-SXM4-40GB. Figures 2, 5, 10 and 11 are schematics; the others are measured or computed from the engine's own tables.
 </footer>
 <script>
 // ---------------------------------------------------------------------------
@@ -804,7 +866,7 @@ function scene2() {
       stage.innerHTML = `<div class="mono" style="font-size:12.5px;line-height:1.9">_length_update_target → <span style="color:var(--hot)">CUT</span>: recompute Orange's longest road<br>in-kernel DFS over Orange's roads → <span style="color:var(--ok)">4</span> (was 7)<br>_apply_length_update + winner check<br><span style="color:var(--muted)">all inside the same single launch</span></div>`;
       highlightCells(cells, [OFF.longest_road_color, OFF.longest_road_lengths, OFF.longest_road_lengths + 1, OFF.visible_vp, OFF.visible_vp + 1, OFF.actual_vp, OFF.actual_vp + 1, OFF.winner]);
       logEl.innerHTML += `<div class="cur">longest road DFS (victim = orange) → 4</div><div class="cur">award + winner check</div>`;
-      return "The move finishes inside the same launch: decide whether longest road needs recomputing, run the search only for games that need it (Figure 6), hand out awards and check for a winner. One launch per move made the engine step 4.0× faster than the XLA version on colonist rules, and 5.2× on catanatron's.";
+      return "The move finishes inside the same launch: decide whether longest road needs recomputing, run the search only for games that need it (Figure 3), hand out awards and check for a winner. One launch per move made the engine step 4.0× faster than the XLA version on colonist rules, and 5.2× on catanatron's.";
     }},
   ];
   // flatten sub-steps
@@ -815,7 +877,7 @@ function scene2() {
     const [i, k] = flat[step];
     if (i < 3) logEl.innerHTML = "";
     if (i === 4 || i === 5) logEl.innerHTML = writes.map(w => `<div>${w[0]}</div>`).join("");
-    cap.innerHTML = "<b>Figure 2.</b> " + STEPS[i].run(k);
+    cap.innerHTML = "<b>Figure 4.</b> " + STEPS[i].run(k);
     document.getElementById("move-title").textContent = `${i + 1}. ${STEPS[i].title}`;
     document.getElementById("m-step").textContent = `step ${step + 1} / ${flat.length}`;
   }
@@ -1698,7 +1760,96 @@ function sceneInvariance() {
   draw("on");
 }
 
-[scene1, scene2, scene3, scene4, sceneThrough, sceneArms, sceneTiming, sceneBreakdown, scene5, scene6, scenePackWalk, scenePack, sceneInvariance].forEach(f => f());
+
+// ---------------------------------------------------------------------------
+// Sticky chart: self-play games/s at each milestone, revealed as the reader scrolls
+// Sources: catanax PRs #137 (vmap, road kernel, fused kernel), #143 (before packing),
+// #145, #146, #147; catanatron paper_lite, best saved net, A100. Hours = 3,800 iterations.
+// ---------------------------------------------------------------------------
+const MILESTONES = [
+  { short: "CPU", label: "catanatron in Python, 16 CPU cores, no network", gps: 100, hours: null },
+  { short: "vmap", label: "Rules as arrays, vmap on the GPU", gps: 126, hours: 49 },
+  { short: "road kernel", label: "Longest road as a per-game kernel", gps: 1032, hours: 6.0 },
+  { short: "fused move", label: "The whole move as one per-game kernel", gps: 2697, hours: 2.4 },
+  { short: "new-road search", label: "Search only through the new road; Pallas legal-move mask", gps: 3057, hours: 2.1 },
+  { short: "packing", label: "Evaluate only the candidates that matter", gps: 4166, hours: 1.55 },
+  { short: "arms + pairs", label: "Board-sized masks; pair the road arms across the warp", gps: 4575, hours: 1.43 },
+  { short: "dice packing", label: "Only roll the dice that matter", gps: 5687, hours: 1.16 },
+];
+function sceneStoryChart() {
+  const svg = document.getElementById("sc-chart");
+  const W = 272, H = 250, L = 40, R = 10, T = 12, Bm = 26;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const markers = [...document.querySelectorAll("[data-m]")];
+  let current = -1, lo = 80, hi = 160, anim = null;
+  const x = i => L + (W - L - R) * (i + 0.5) / MILESTONES.length;
+  const ly = (v, a, b) => T + (H - T - Bm) * (1 - (Math.log(v) - Math.log(a)) / (Math.log(b) - Math.log(a)));
+  function ticks(a, b) {
+    if (b / a < 4) {
+      const span = b - a, raw = span / 4, p = Math.pow(10, Math.floor(Math.log10(raw)));
+      const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= raw);
+      const out = []; for (let v = Math.ceil(a / step) * step; v <= b; v += step) out.push(v); return out;
+    }
+    const out = []; for (let d = Math.pow(10, Math.floor(Math.log10(a))); d <= b; d *= 10) for (const m of [1, 2, 5]) { const v = m * d; if (v >= a && v <= b) out.push(v); } return out;
+  }
+  function draw(a, b, upto) {
+    svg.innerHTML = "";
+    for (const v of ticks(a, b)) {
+      const yy = ly(v, a, b);
+      el("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "#eceff6" }, svg);
+      el("text", { x: L - 5, y: yy + 3, "text-anchor": "end", style: "font:500 9.5px Inter, sans-serif;fill:#8b91a5" }, svg).textContent = v >= 1000 ? (v / 1000) + "k" : v;
+    }
+    el("text", { x: L, y: H - 6, style: "font:500 9.5px Inter, sans-serif;fill:#8b91a5" }, svg).textContent = "each point: one change, in order";
+    if (upto < 0) return;
+    const pts = MILESTONES.slice(0, upto + 1).map((m, i) => [x(i), ly(m.gps, a, b), m, i]);
+    if (pts.length > 1) el("polyline", { points: pts.slice(1).map(p => p[0] + "," + p[1]).join(" "), fill: "none", stroke: "#6c9be0", "stroke-width": 2 }, svg);
+    if (pts.length > 1) el("line", { x1: pts[0][0], y1: pts[0][1], x2: pts[1][0], y2: pts[1][1], stroke: "#b9bfd0", "stroke-width": 1.5, "stroke-dasharray": "3 3" }, svg);
+    pts.forEach(([px, py, m, i]) => {
+      const isNow = i === upto, isCpu = i === 0;
+      const c = el("circle", { cx: px, cy: py, r: isNow ? 6 : 4.5, fill: isCpu ? "#ffffff" : (isNow ? "#e47c93" : "#6c9be0"), stroke: isCpu ? "#8b91a5" : "#ffffff", "stroke-width": 2 }, svg);
+      el("title", {}, c).textContent = `${m.label}: ${m.gps.toLocaleString()} games/s` + (m.hours ? `, ${m.hours} h to train` : "");
+      el("text", { x: px, y: py - (isNow ? 11 : 9), "text-anchor": "middle", style: `font:${isNow ? 700 : 600} ${isNow ? 11 : 9.5}px Inter, sans-serif;fill:${isNow ? "#2a2f3d" : "#8b91a5"}` }, svg).textContent = i + 1;
+    });
+  }
+  function domainFor(upto) {
+    if (upto < 0) return [80, 160];
+    const vals = MILESTONES.slice(0, upto + 1).map(m => m.gps);
+    return [Math.min(...vals) / 1.25, Math.max(...vals) * 1.35];
+  }
+  function setCurrent(k) {
+    if (k === current) return;
+    current = k;
+    document.querySelectorAll("#sc-list li").forEach((li, i) => { li.className = i < k ? "past" : i === k ? "now" : ""; });
+    const m = MILESTONES[k];
+    document.getElementById("sc-gps").textContent = m ? m.gps.toLocaleString() : "—";
+    document.getElementById("sc-label").textContent = m ? m.label + (m.hours ? ` · ${m.hours} h to train` : "") : "Scroll to start";
+    const [a1, b1] = domainFor(k), a0 = lo, b0 = hi, t0 = performance.now();
+    if (anim) cancelAnimationFrame(anim);
+    const step = now => {
+      const u = Math.min(1, (now - t0) / 500), e = 1 - Math.pow(1 - u, 3);
+      lo = Math.exp(Math.log(a0) + (Math.log(a1) - Math.log(a0)) * e);
+      hi = Math.exp(Math.log(b0) + (Math.log(b1) - Math.log(b0)) * e);
+      draw(lo, hi, current);
+      if (u < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  }
+  function onScroll() {
+    const line = window.innerHeight * 0.6;
+    let k = -1;
+    for (const mk of markers) if (mk.getBoundingClientRect().top < line) k = Math.max(k, +mk.dataset.m);
+    setCurrent(k);
+  }
+  const list = document.getElementById("sc-list");
+  MILESTONES.forEach((m, i) => { const li = document.createElement("li"); li.innerHTML = `<b>${i + 1}</b> ${m.short} <span>${m.gps.toLocaleString()}</span>`; list.appendChild(li); });
+  draw(lo, hi, -1);
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  setInterval(onScroll, 300);  // also catches scrolls that fire no event (anchors, restores)
+  onScroll();
+}
+
+[scene1, scene2, scene3, scene4, sceneThrough, sceneArms, sceneTiming, sceneBreakdown, scene5, scene6, scenePackWalk, scenePack, sceneInvariance, sceneStoryChart].forEach(f => f());
 </script>
 </body>
 </html>

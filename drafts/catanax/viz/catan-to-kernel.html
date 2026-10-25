@@ -497,7 +497,19 @@ footer { max-width: 700px; margin: 60px auto 80px; padding: 18px 24px 0; border-
     <tr><td>Padded bitmasks; a search that multiplies its two ends</td><td>Masks sized to the board; pair the arms across the warp</td><td>4,575</td></tr>
     <tr><td>Dice outcomes evaluated for every game</td><td>Pack the dice, by game</td><td>5,687</td></tr>
   </table>
-  <p>What's left is mostly not in the engine. Most of a self-play step is now the network, and more than half of the positions colonist self-play searches have only one legal move. Playing those moves inside the engine kernel, instead of searching them, is the experiment I'm running next. Speed roughly doubles. What I don't know yet is whether the agent learns as well when those positions are no longer part of its training data.</p>
+  <p>What's left is mostly not in the engine. Most of a self-play step is now the network, and more than half of the positions colonist self-play searches have only one legal move. The obvious next move was to play those inside the engine kernel instead of searching them, and I built it: each game plays its own forced moves in the same launch, which roughly doubles the real decisions per second. Then I trained with it. Run one after the other on the same GPU, with that one flag as the only difference, the version that skips forced moves ended up weaker, both per training step and per hour (Figure 14). Each step covered twice as much game, but forced positions stopped being training examples for the value network, and the network learned less from each step. The speedup was real and the agent was worse, so it isn't in the code.</p>
+</div>
+
+<figure class="l-wide"><div class="frame">
+  <div class="two">
+    <div class="panel"><h3>Elo by training iteration</h3><img src="../experiments/forced-moves-elo/elo_vs_iteration.png" alt="Elo by training iteration for forced moves off and on" style="width:100%"></div>
+    <div class="panel"><h3>Elo by real training hours</h3><img src="../experiments/forced-moves-elo/elo_vs_hours.png" alt="Elo by real training hours for forced moves off and on" style="width:100%"></div>
+  </div></div>
+  <figcaption><b>Figure 14.</b> Colonist paper_lite, forced moves searched (blue) or played inside the engine (orange): the same code, seed and recipe, 2,000 iterations each, one run after the other on an A100. Elo from a joint round robin of all 16 checkpoints plus a random player, 512 games per pair. One seed per arm.</figcaption>
+</figure>
+
+<div class="l-text">
+  <p>Speed was never the goal, only the means. This last one is a good reminder that the only number that finally matters is how strong the agent gets per hour.</p>
 </div>
 
 </main>

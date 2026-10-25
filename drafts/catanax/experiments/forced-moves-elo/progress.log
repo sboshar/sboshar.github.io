@@ -1,0 +1,12 @@
+2026-10-24T13:49:39Z commit d2bdfffde2401dd73f53f6202794b67203458e9b
+2026-10-24T13:49:39Z waiting for an idle GPU before off
+2026-10-24T14:56:41Z start off: iterations=2000 checkpoint_every=250 eval_every=100000 
+2026-10-24T16:58:32Z end off exit=0
+2026-10-24T16:58:32Z waiting for an idle GPU before on
+2026-10-24T16:59:32Z start on: iterations=2000 checkpoint_every=250 eval_every=100000 skip_forced_plies=true
+2026-10-24T19:57:36Z end on exit=0
+2026-10-24T19:57:36Z round robin
+2026-10-24T19:57:38Z round robin exit=1
+2026-10-24T19:57:38Z DONE
+2026-10-24T19:58:32Z round robin rerun
+2026-10-24T20:08:52Z round robin exit=0 RRDONE

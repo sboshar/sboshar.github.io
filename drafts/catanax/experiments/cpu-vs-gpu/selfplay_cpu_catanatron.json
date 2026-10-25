@@ -1,0 +1,40 @@
+{
+  "config": "configs/paper_lite.yaml",
+  "overrides": [],
+  "dice_capacity": 0.15,
+  "ckpt": "../cpu-bench/ckpt/paper_lite_obsv2.pkl",
+  "engine": "xla",
+  "tree": "config",
+  "kind": "topk",
+  "hidden": 256,
+  "layers": 4,
+  "batch": 2048,
+  "selfplay_steps": 700,
+  "warm": 700,
+  "warm_s": 172.10897504200693,
+  "timed_steps": 700,
+  "compile_and_first_run_s": 177.47001124999952,
+  "ms_per_selfplay_step": 236.76452511996362,
+  "games_per_s": 35.242972780900516,
+  "skip_cap": 0,
+  "pack": "packed",
+  "forced_root_fraction": 0.2966322544642857,
+  "epoch_s": 4.097307124990039,
+  "iteration_s": 169.83247470896458,
+  "runs": [
+    [
+      172.40350325003965,
+      5858
+    ],
+    [
+      164.4272704999894,
+      5812
+    ],
+    [
+      165.73516758397454,
+      5841
+    ]
+  ],
+  "gpu": "cpu",
+  "commit": "08caf35"
+}

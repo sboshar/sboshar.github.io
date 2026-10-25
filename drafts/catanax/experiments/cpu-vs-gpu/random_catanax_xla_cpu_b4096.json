@@ -1,0 +1,14 @@
+{
+ "engine": "catanax xla",
+ "device": "cpu",
+ "batch": 4096,
+ "steps": 500,
+ "games": 2240,
+ "moves": 2048000,
+ "seconds": 27.133867707976606,
+ "games_per_s": 82.55365671077928,
+ "moves_per_s": 75477.62899271247,
+ "moves_per_game": 914.2857142857143,
+ "machine": "macOS-27.0-arm64-arm-64bit",
+ "cpu": "arm"
+}

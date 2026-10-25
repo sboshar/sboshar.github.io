@@ -1,0 +1,14 @@
+{
+ "engine": "catanax xla",
+ "device": "NVIDIA A100-SXM4-40GB",
+ "batch": 4096,
+ "steps": 2000,
+ "games": 8961,
+ "moves": 8192000,
+ "seconds": 10.901080443989486,
+ "games_per_s": 822.0286095531765,
+ "moves_per_s": 751485.1433388708,
+ "moves_per_game": 914.1836848566008,
+ "machine": "Linux-6.17.0-1022-gcp-x86_64-with-glibc2.39",
+ "cpu": "x86_64"
+}

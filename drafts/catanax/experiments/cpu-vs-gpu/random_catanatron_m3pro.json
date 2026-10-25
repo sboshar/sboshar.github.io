@@ -1,0 +1,12 @@
+{
+ "engine": "catanatron (Python)",
+ "procs": 12,
+ "games": 7200,
+ "moves": 6503215,
+ "seconds": 13.881128209002782,
+ "games_per_s": 518.689827771373,
+ "moves_per_s": 468493.25948752905,
+ "moves_per_game": 903.2243055555556,
+ "machine": "macOS-27.0-arm64-arm-64bit",
+ "cpu": "arm"
+}
